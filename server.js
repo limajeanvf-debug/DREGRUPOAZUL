@@ -161,6 +161,11 @@ app.post('/api/usuarios', auth(['admin']), async (req, res) => {
   await logAudit(req.user.id, 'Criou usuário', `${email} (${role})`);
   res.json(rows[0]);
 });
+app.patch('/api/usuarios/:id/role', auth(['admin']), async (req, res) => {
+  await pool.query('UPDATE dre.usuarios SET role=$1 WHERE id=$2', [req.body.role, req.params.id]);
+  await logAudit(req.user.id, 'Alterou papel', `${req.params.id} → ${req.body.role}`);
+  res.json({ ok: true });
+});
 app.patch('/api/usuarios/:id/senha', auth(['admin']), async (req, res) => {
   const hash = await bcrypt.hash(req.body.senha, 10);
   await pool.query('UPDATE dre.usuarios SET senha_hash=$1 WHERE id=$2', [hash, req.params.id]);
