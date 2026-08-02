@@ -89,12 +89,12 @@ app.get('/api/operacoes/:opId/credores', auth(), async (req, res) => {
   res.json(rows);
 });
 app.post('/api/operacoes/:opId/credores', auth(['admin', 'usuario']), async (req, res) => {
-  const { nome } = req.body;
+  const { nome, mes, ano } = req.body;
   const { rows } = await pool.query(
-    'INSERT INTO dre.credores_manuais (operacao_id, nome) VALUES ($1,$2) RETURNING *',
-    [req.params.opId, nome]
+    'INSERT INTO dre.credores_manuais (operacao_id, nome, mes, ano) VALUES ($1,$2,$3,$4) RETURNING *',
+    [req.params.opId, nome, mes, ano]
   );
-  await logAudit(req.user.id, 'Adicionou credor (Passivo)', `${req.params.opId} · ${nome}`);
+  await logAudit(req.user.id, 'Adicionou credor (Passivo)', `${req.params.opId} · ${nome} · ${mes}/${ano}`);
   res.json(rows[0]);
 });
 app.delete('/api/credores/:id', auth(['admin', 'usuario']), async (req, res) => {
