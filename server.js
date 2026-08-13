@@ -107,19 +107,30 @@ app.delete('/api/credores/:id', auth(['admin', 'usuario']), async (req, res) => 
 app.get('/api/lancamentos', auth(), async (req, res) => {
   const { operacaoId, ano } = req.query;
   const { rows } = await pool.query(
-    'SELECT * FROM dre.lancamentos WHERE operacao_id=$1 AND ano=$2', [operacaoId, ano]
+    `SELECT * FROM dre.lancamentos WHERE operacao_id=$1 AND ano=$2
+     ORDER BY atualizado_em ASC NULLS FIRST, id ASC`, [operacaoId, ano]
   );
   res.json(rows);
 });
 app.put('/api/lancamentos', auth(['admin', 'usuario']), async (req, res) => {
   const { operacaoId, categoriaId, credorManualId, mes, ano, valor } = req.body;
-  await pool.query(
-    `INSERT INTO dre.lancamentos (operacao_id, categoria_id, credor_manual_id, mes, ano, valor, atualizado_por)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
-     ON CONFLICT (operacao_id, categoria_id, credor_manual_id, mes, ano)
-     DO UPDATE SET valor=$6, atualizado_em=now(), atualizado_por=$7`,
-    [operacaoId, categoriaId || null, credorManualId || null, mes, ano, valor, req.user.id]
+  // ON CONFLICT não serve aqui: categoria_id/credor_manual_id são NULL em metade
+  // dos casos e NULL nunca conflita com NULL no índice único — cada edição criava
+  // uma LINHA NOVA, e o GET devolvia valores antigos junto com o novo.
+  const params = [operacaoId, categoriaId || null, credorManualId || null, mes, ano, valor, req.user.id];
+  const upd = await pool.query(
+    `UPDATE dre.lancamentos SET valor=$6, atualizado_em=now(), atualizado_por=$7
+      WHERE operacao_id=$1
+        AND categoria_id IS NOT DISTINCT FROM $2
+        AND credor_manual_id IS NOT DISTINCT FROM $3
+        AND mes=$4 AND ano=$5`, params
   );
+  if (upd.rowCount === 0) {
+    await pool.query(
+      `INSERT INTO dre.lancamentos (operacao_id, categoria_id, credor_manual_id, mes, ano, valor, atualizado_por)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`, params
+    );
+  }
   await logAudit(req.user.id, 'Editou valor', `op=${operacaoId} cat=${categoriaId||credorManualId} ${mes}/${ano} → ${valor}`);
   res.json({ ok: true });
 });
