@@ -91,10 +91,43 @@ async function bootstrapSchema() {
   } catch (e) {
     console.error('bootstrapSchema faturas falhou:', e.message);
   }
+  // Responsáveis e checklist de cartões: também isolados do DRE.
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.responsaveis (
+      id SERIAL PRIMARY KEY,
+      nome TEXT NOT NULL UNIQUE,
+      ativo BOOLEAN NOT NULL DEFAULT true
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.cartoes (
+      id SERIAL PRIMARY KEY,
+      nome TEXT NOT NULL,
+      dia_venc INT NOT NULL CHECK (dia_venc BETWEEN 1 AND 31),
+      valor_previsto NUMERIC(14,2) NOT NULL DEFAULT 0,
+      inicio DATE NOT NULL,
+      fim DATE,
+      criado_por INT,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.cartao_checks (
+      id SERIAL PRIMARY KEY,
+      cartao_id INT NOT NULL REFERENCES dre.cartoes(id) ON DELETE CASCADE,
+      competencia DATE NOT NULL,
+      vencimento DATE,
+      valor NUMERIC(14,2) NOT NULL DEFAULT 0,
+      conferido BOOLEAN NOT NULL DEFAULT false,
+      conferido_email TEXT,
+      conferido_em TIMESTAMPTZ,
+      removido BOOLEAN NOT NULL DEFAULT false,
+      UNIQUE (cartao_id, competencia)
+    )`);
+    console.log('schema cartoes/responsaveis ok');
+  } catch (e) {
+    console.error('bootstrapSchema cartoes falhou:', e.message);
+  }
 }
 bootstrapSchema();
 
-app.get('/api/health', (req, res) => res.json({ ok: true, versao: 'faturas-2026-09-02' }));
+app.get('/api/health', (req, res) => res.json({ ok: true, versao: 'cartoes-2026-09-23' }));
 app.use(express.static(require('path').join(__dirname, 'public')));
 
 // ---------- auth middleware ----------
@@ -337,6 +370,120 @@ app.delete('/api/faturas/tipos/:nome', auth(['admin', 'usuario']), async (req, r
   const { rows } = await pool.query(
     'SELECT nome FROM dre.fatura_tipos WHERE ativo ORDER BY ordem, nome');
   res.json({ tipos: rows.map(t => t.nome) });
+});
+
+// ---------- responsáveis ----------
+app.get('/api/responsaveis', auth(), async (req, res) => {
+  const { rows } = await pool.query('SELECT nome FROM dre.responsaveis WHERE ativo ORDER BY nome');
+  res.json({ responsaveis: rows.map(r => r.nome) });
+});
+app.post('/api/responsaveis', auth(['admin', 'usuario']), async (req, res) => {
+  const nome = String(req.body.nome || '').trim();
+  if (!nome) return res.status(400).json({ erro: 'nome obrigatorio' });
+  await pool.query(
+    'INSERT INTO dre.responsaveis (nome) VALUES ($1) ON CONFLICT (nome) DO UPDATE SET ativo=true', [nome]);
+  await logAudit(req.user.id, 'Cadastrou responsável', nome);
+  res.json({ ok: true });
+});
+// Desativa: faturas antigas continuam mostrando o nome gravado.
+app.delete('/api/responsaveis/:nome', auth(['admin', 'usuario']), async (req, res) => {
+  const nome = String(req.params.nome || '').trim();
+  await pool.query('UPDATE dre.responsaveis SET ativo=false WHERE nome=$1', [nome]);
+  await logAudit(req.user.id, 'Removeu responsável', nome);
+  res.json({ ok: true });
+});
+
+// ---------- checklist de cartões ----------
+// Cada cartão ativo gera uma linha por competência (replicação automática),
+// com o mesmo nome e dia de vencimento; o valor parte do último mês lançado.
+const CARTAO_OUT = `c.id, c.nome, c.dia_venc AS dia, c.valor_previsto::float AS valor,
+  to_char(c.inicio,'YYYY-MM') AS inicio, to_char(c.fim,'YYYY-MM') AS fim`;
+const CHECK_OUT = `k.id, k.cartao_id AS "cartaoId", to_char(k.competencia,'YYYY-MM') AS comp, c.nome,
+  to_char(k.vencimento,'YYYY-MM-DD') AS venc, k.valor::float AS valor, k.conferido,
+  k.conferido_email AS por, to_char(k.conferido_em,'YYYY-MM-DD') AS em, k.removido`;
+
+app.get('/api/cartoes', auth(), async (req, res) => {
+  const comp = compToDate(req.query.comp) || new Date().toISOString().slice(0, 8) + '01';
+  await pool.query(
+    `INSERT INTO dre.cartao_checks (cartao_id, competencia, vencimento, valor)
+     SELECT c.id, $1::date,
+       $1::date + (LEAST(c.dia_venc, EXTRACT(DAY FROM ($1::date + interval '1 month' - interval '1 day'))::int) - 1),
+       COALESCE((SELECT k.valor FROM dre.cartao_checks k
+                 WHERE k.cartao_id=c.id AND k.competencia < $1::date AND NOT k.removido
+                 ORDER BY k.competencia DESC LIMIT 1), c.valor_previsto)
+     FROM dre.cartoes c
+     WHERE c.inicio <= $1::date AND (c.fim IS NULL OR c.fim > $1::date)
+     ON CONFLICT (cartao_id, competencia) DO NOTHING`, [comp]);
+  const { rows: cartoes } = await pool.query(
+    `SELECT ${CARTAO_OUT} FROM dre.cartoes c WHERE c.fim IS NULL ORDER BY c.dia_venc, c.nome`);
+  const { rows: checks } = await pool.query(
+    `SELECT ${CHECK_OUT} FROM dre.cartao_checks k JOIN dre.cartoes c ON c.id=k.cartao_id
+     WHERE k.competencia=$1::date ORDER BY k.vencimento, c.nome`, [comp]);
+  res.json({ cartoes, checks });
+});
+
+app.post('/api/cartoes', auth(['admin', 'usuario']), async (req, res) => {
+  const nome = String(req.body.nome || '').trim();
+  const dia = Math.min(31, Math.max(1, parseInt(req.body.dia, 10) || 1));
+  if (!nome) return res.status(400).json({ erro: 'nome obrigatorio' });
+  const inicio = compToDate(req.body.comp) || new Date().toISOString().slice(0, 8) + '01';
+  const { rows } = await pool.query(
+    `INSERT INTO dre.cartoes (nome, dia_venc, valor_previsto, inicio, criado_por)
+     VALUES ($1,$2,$3,$4,$5) RETURNING id`, [nome, dia, Number(req.body.valor) || 0, inicio, req.user.id]);
+  await logAudit(req.user.id, 'Cadastrou cartão', `${nome} · dia ${dia}`);
+  res.json({ id: rows[0].id });
+});
+
+app.patch('/api/cartoes/:id', auth(['admin', 'usuario']), async (req, res) => {
+  const { nome, dia, valor } = req.body;
+  const sets = [];
+  const vals = [];
+  const add = (sql, v) => { vals.push(v); sets.push(`${sql}=$${vals.length}`); };
+  if (nome !== undefined) add('nome', String(nome).trim());
+  if (dia !== undefined) add('dia_venc', Math.min(31, Math.max(1, parseInt(dia, 10) || 1)));
+  if (valor !== undefined) add('valor_previsto', Number(valor) || 0);
+  if (!sets.length) return res.status(400).json({ erro: 'nada para atualizar' });
+  vals.push(req.params.id);
+  await pool.query(`UPDATE dre.cartoes SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals);
+  res.json({ ok: true });
+});
+
+// Exclui a partir de uma competência: meses anteriores ficam preservados.
+app.delete('/api/cartoes/:id', auth(['admin', 'usuario']), async (req, res) => {
+  const comp = compToDate(req.query.comp) || new Date().toISOString().slice(0, 8) + '01';
+  const { rows } = await pool.query('SELECT nome, inicio FROM dre.cartoes WHERE id=$1', [req.params.id]);
+  if (!rows.length) return res.status(404).json({ erro: 'cartao inexistente' });
+  await pool.query(
+    'DELETE FROM dre.cartao_checks WHERE cartao_id=$1 AND competencia >= $2::date AND NOT conferido',
+    [req.params.id, comp]);
+  await pool.query(
+    `UPDATE dre.cartoes SET fim=$2::date WHERE id=$1`, [req.params.id, comp]);
+  await logAudit(req.user.id, 'Excluiu cartão', `${rows[0].nome} a partir de ${comp.slice(0, 7)}`);
+  res.json({ ok: true });
+});
+
+app.patch('/api/cartoes/checks/:id', auth(['admin', 'usuario']), async (req, res) => {
+  const { conferido, valor, removido } = req.body;
+  const sets = [];
+  const vals = [];
+  const add = (sql, v) => { vals.push(v); sets.push(`${sql}=$${vals.length}`); };
+  if (valor !== undefined) add('valor', Number(valor) || 0);
+  if (removido !== undefined) add('removido', !!removido);
+  if (conferido !== undefined) {
+    add('conferido', !!conferido);
+    add('conferido_email', conferido ? req.user.email : null);
+    sets.push(conferido ? 'conferido_em=now()' : 'conferido_em=NULL');
+  }
+  if (!sets.length) return res.status(400).json({ erro: 'nada para atualizar' });
+  vals.push(req.params.id);
+  const { rows } = await pool.query(
+    `UPDATE dre.cartao_checks k SET ${sets.join(', ')} FROM dre.cartoes c
+     WHERE k.id=$${vals.length} AND c.id=k.cartao_id RETURNING c.nome, k.competencia`, vals);
+  if (!rows.length) return res.status(404).json({ erro: 'item inexistente' });
+  if (conferido !== undefined) {
+    await logAudit(req.user.id, conferido ? 'Conferiu cartão' : 'Desfez conferência de cartão', rows[0].nome);
+  }
+  res.json({ ok: true });
 });
 
 // ---------- usuários (admin) ----------
