@@ -79,6 +79,15 @@ async function bootstrapSchema() {
       atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
     await pool.query('ALTER TABLE dre.faturas ADD COLUMN IF NOT EXISTS responsavel TEXT');
+    await pool.query('ALTER TABLE dre.faturas ADD COLUMN IF NOT EXISTS recebido BOOLEAN NOT NULL DEFAULT false');
+    await pool.query('ALTER TABLE dre.faturas ADD COLUMN IF NOT EXISTS recebido_email TEXT');
+    await pool.query('ALTER TABLE dre.faturas ADD COLUMN IF NOT EXISTS recebido_em TIMESTAMPTZ');
+    await pool.query('ALTER TABLE dre.faturas ADD COLUMN IF NOT EXISTS recebido_banco TEXT');
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.bancos (
+      id SERIAL PRIMARY KEY,
+      nome TEXT NOT NULL UNIQUE,
+      ativo BOOLEAN NOT NULL DEFAULT true
+    )`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_faturas_comp
       ON dre.faturas (competencia, tipo_nome, movimento)`);
     const tiposPadrao = [['Cartão', 10], ['Azul', 20], ['Azul Viagens', 30], ['Gol', 40], ['Latam', 50], ['Consolidadora', 60]];
@@ -120,7 +129,29 @@ async function bootstrapSchema() {
       removido BOOLEAN NOT NULL DEFAULT false,
       UNIQUE (cartao_id, competencia)
     )`);
-    console.log('schema cartoes/responsaveis ok');
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.faturas_adm_tipos (
+      nome TEXT PRIMARY KEY,
+      ativo BOOLEAN NOT NULL DEFAULT true,
+      ordem INT NOT NULL DEFAULT 100
+    )`);
+    const admPadrao = ['Aluguel','Energia','Água','Internet','Telefone','Contabilidade','Impostos','Manutenção','Outros'];
+    for (let i = 0; i < admPadrao.length; i++) {
+      await pool.query('INSERT INTO dre.faturas_adm_tipos (nome, ordem) VALUES ($1,$2) ON CONFLICT (nome) DO NOTHING', [admPadrao[i], (i + 1) * 10]);
+    }
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.faturas_adm (
+      id SERIAL PRIMARY KEY,
+      nome TEXT NOT NULL,
+      tipo TEXT NOT NULL DEFAULT '',
+      loja TEXT NOT NULL DEFAULT '',
+      vencimento DATE,
+      valor NUMERIC(14,2) NOT NULL DEFAULT 0,
+      pago BOOLEAN NOT NULL DEFAULT false,
+      pago_email TEXT,
+      pago_em TIMESTAMPTZ,
+      criado_por INT,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+    console.log('schema cartoes/responsaveis/adm ok');
   } catch (e) {
     console.error('bootstrapSchema cartoes falhou:', e.message);
   }
@@ -287,6 +318,10 @@ function faturaOut(r) {
     conferida: r.conferida,
     por: r.conferida_email || null,
     em: iso(r.conferida_em) ? iso(r.conferida_em).slice(0, 10) : null,
+    recebido: !!r.recebido,
+    recPor: r.recebido_email || null,
+    recBanco: r.recebido_banco || '',
+    recEm: iso(r.recebido_em) ? iso(r.recebido_em).slice(0, 10) : null,
   };
 }
 const compToDate = (comp) => (comp && /^\d{4}-\d{2}$/.test(comp) ? comp + '-01' : null);
@@ -313,7 +348,7 @@ app.post('/api/faturas', auth(['admin', 'usuario']), async (req, res) => {
 });
 
 app.patch('/api/faturas/:id', auth(['admin', 'usuario']), async (req, res) => {
-  const { tipo, comp, venc, valor, mov, desc, conferida, responsavel } = req.body;
+  const { tipo, comp, venc, valor, mov, desc, conferida, responsavel, recebido, recBanco } = req.body;
   const sets = [];
   const vals = [];
   const add = (sql, v) => { vals.push(v); sets.push(`${sql}=$${vals.length}`); };
@@ -330,6 +365,12 @@ app.patch('/api/faturas/:id', auth(['admin', 'usuario']), async (req, res) => {
     add('conferida_email', conferida ? req.user.email : null);
     sets.push(conferida ? 'conferida_em=now()' : 'conferida_em=NULL');
   }
+  if (recBanco !== undefined) add('recebido_banco', String(recBanco || '').trim() || null);
+  if (recebido !== undefined) {
+    add('recebido', !!recebido);
+    add('recebido_email', recebido ? req.user.email : null);
+    sets.push(recebido ? 'recebido_em=now()' : 'recebido_em=NULL');
+  }
   if (!sets.length) return res.status(400).json({ erro: 'nada para atualizar' });
   sets.push('atualizado_em=now()');
   vals.push(req.params.id);
@@ -338,6 +379,9 @@ app.patch('/api/faturas/:id', auth(['admin', 'usuario']), async (req, res) => {
   if (!rows.length) return res.status(404).json({ erro: 'fatura inexistente' });
   if (conferida !== undefined) {
     await logAudit(req.user.id, conferida ? 'Conferiu fatura' : 'Desfez conferência de fatura', rows[0].descricao);
+  }
+  if (recebido !== undefined) {
+    await logAudit(req.user.id, recebido ? 'Confirmou recebimento na conta' : 'Desfez confirmação de recebimento', rows[0].descricao);
   }
   res.json(faturaOut(rows[0]));
 });
@@ -390,6 +434,90 @@ app.delete('/api/responsaveis/:nome', auth(['admin', 'usuario']), async (req, re
   const nome = String(req.params.nome || '').trim();
   await pool.query('UPDATE dre.responsaveis SET ativo=false WHERE nome=$1', [nome]);
   await logAudit(req.user.id, 'Removeu responsável', nome);
+  res.json({ ok: true });
+});
+
+// ---------- bancos (recebimentos) ----------
+app.get('/api/bancos', auth(), async (req, res) => {
+  const { rows } = await pool.query('SELECT nome FROM dre.bancos WHERE ativo ORDER BY nome');
+  res.json({ bancos: rows.map(r => r.nome) });
+});
+app.post('/api/bancos', auth(['admin', 'usuario']), async (req, res) => {
+  const nome = String(req.body.nome || '').trim();
+  if (!nome) return res.status(400).json({ erro: 'nome obrigatorio' });
+  await pool.query('INSERT INTO dre.bancos (nome) VALUES ($1) ON CONFLICT (nome) DO UPDATE SET ativo=true', [nome]);
+  await logAudit(req.user.id, 'Cadastrou banco', nome);
+  res.json({ ok: true });
+});
+app.delete('/api/bancos/:nome', auth(['admin', 'usuario']), async (req, res) => {
+  const nome = String(req.params.nome || '').trim();
+  await pool.query('UPDATE dre.bancos SET ativo=false WHERE nome=$1', [nome]);
+  await logAudit(req.user.id, 'Removeu banco', nome);
+  res.json({ ok: true });
+});
+
+// ---------- faturas administrativas ----------
+const admOut = r => ({
+  id: r.id, nome: r.nome, tipo: r.tipo, loja: r.loja,
+  venc: r.vencimento ? new Date(r.vencimento).toISOString().slice(0, 10) : '',
+  valor: Number(r.valor), pago: !!r.pago, por: r.pago_email || null,
+});
+app.get('/api/faturas-adm', auth(), async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM dre.faturas_adm ORDER BY vencimento NULLS LAST, id');
+  const { rows: tipos } = await pool.query('SELECT nome FROM dre.faturas_adm_tipos WHERE ativo ORDER BY ordem, nome');
+  res.json({ itens: rows.map(admOut), tipos: tipos.map(t => t.nome) });
+});
+app.post('/api/faturas-adm/tipos', auth(['admin', 'usuario']), async (req, res) => {
+  const nome = String(req.body.nome || '').trim();
+  if (!nome) return res.status(400).json({ erro: 'nome obrigatorio' });
+  await pool.query('INSERT INTO dre.faturas_adm_tipos (nome) VALUES ($1) ON CONFLICT (nome) DO UPDATE SET ativo=true', [nome]);
+  res.json({ ok: true });
+});
+app.delete('/api/faturas-adm/tipos/:nome', auth(['admin', 'usuario']), async (req, res) => {
+  const nome = String(req.params.nome || '').trim();
+  const { rows } = await pool.query('SELECT count(*)::int AS n FROM dre.faturas_adm WHERE tipo=$1', [nome]);
+  if (rows[0].n > 0) return res.status(409).json({ erro: 'tipo em uso' });
+  await pool.query('UPDATE dre.faturas_adm_tipos SET ativo=false WHERE nome=$1', [nome]);
+  res.json({ ok: true });
+});
+app.post('/api/faturas-adm', auth(['admin', 'usuario']), async (req, res) => {
+  const { nome, tipo, loja, venc, valor } = req.body;
+  if (!String(nome || '').trim()) return res.status(400).json({ erro: 'nome obrigatorio' });
+  const { rows } = await pool.query(
+    `INSERT INTO dre.faturas_adm (nome, tipo, loja, vencimento, valor, criado_por)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [String(nome).trim(), tipo || '', loja || '', venc || null, Number(valor) || 0, req.user.id]);
+  await logAudit(req.user.id, 'Lançou fatura administrativa', `${rows[0].nome} · ${rows[0].loja}`);
+  res.json(admOut(rows[0]));
+});
+app.patch('/api/faturas-adm/:id', auth(['admin', 'usuario']), async (req, res) => {
+  const { nome, tipo, loja, venc, valor, pago } = req.body;
+  const sets = [];
+  const vals = [];
+  const add = (sql, v) => { vals.push(v); sets.push(`${sql}=$${vals.length}`); };
+  if (nome !== undefined) add('nome', String(nome).trim());
+  if (tipo !== undefined) add('tipo', tipo || '');
+  if (loja !== undefined) add('loja', loja || '');
+  if (venc !== undefined) add('vencimento', venc || null);
+  if (valor !== undefined) add('valor', Number(valor) || 0);
+  if (pago !== undefined) {
+    add('pago', !!pago);
+    add('pago_email', pago ? req.user.email : null);
+    sets.push(pago ? 'pago_em=now()' : 'pago_em=NULL');
+  }
+  if (!sets.length) return res.status(400).json({ erro: 'nada para atualizar' });
+  vals.push(req.params.id);
+  const { rows } = await pool.query(
+    `UPDATE dre.faturas_adm SET ${sets.join(', ')} WHERE id=$${vals.length} RETURNING *`, vals);
+  if (!rows.length) return res.status(404).json({ erro: 'fatura inexistente' });
+  if (pago !== undefined) {
+    await logAudit(req.user.id, pago ? 'Pagou fatura administrativa' : 'Reabriu fatura administrativa', rows[0].nome);
+  }
+  res.json(admOut(rows[0]));
+});
+app.delete('/api/faturas-adm/:id', auth(['admin', 'usuario']), async (req, res) => {
+  const { rows } = await pool.query('DELETE FROM dre.faturas_adm WHERE id=$1 RETURNING nome, loja', [req.params.id]);
+  if (rows.length) await logAudit(req.user.id, 'Excluiu fatura administrativa', `${rows[0].nome} · ${rows[0].loja}`);
   res.json({ ok: true });
 });
 
