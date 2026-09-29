@@ -54,6 +54,9 @@ async function bootstrapSchema() {
   } catch (e) {
     console.error('bootstrapSchema falhou:', e.message);
   }
+  try {
+    await pool.query('ALTER TABLE dre.usuarios ADD COLUMN IF NOT EXISTS permissoes JSONB');
+  } catch (e) { console.error('permissoes falhou:', e.message); }
   // Controle de faturas: tabelas próprias, sem tocar em nada do DRE.
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS dre.fatura_tipos (
@@ -173,6 +176,35 @@ function auth(requiredRoles) {
     } catch (e) { res.status(401).json({ error: 'unauthorized' }); }
   };
 }
+// ---------- permissões por aba ----------
+// nenhum = aba oculta · ver = somente leitura · editar = leitura e escrita.
+// Sem registro salvo, vale o papel: leitor → ver, usuario → editar. Admin sempre editar.
+const ABAS = ['operacao', 'consolidacao', 'balanco', 'passivo', 'faturas'];
+const NIVEIS = ['nenhum', 'ver', 'editar'];
+function permsDe(u) {
+  const base = u.role === 'leitor' ? 'ver' : 'editar';
+  const p = (u.permissoes && typeof u.permissoes === 'object') ? u.permissoes : {};
+  const out = {};
+  ABAS.forEach(a => { out[a] = u.role === 'admin' ? 'editar' : (NIVEIS.includes(p[a]) ? p[a] : base); });
+  return out;
+}
+// Lê do banco a cada escrita: a mudança feita pelo admin vale sem novo login.
+function perm(abas) {
+  const lista = [].concat(abas);
+  return async (req, res, next) => {
+    let payload;
+    try { payload = jwt.verify((req.headers.authorization || '').replace('Bearer ', ''), JWT_SECRET); }
+    catch (e) { return res.status(401).json({ error: 'unauthorized' }); }
+    try {
+      const { rows } = await pool.query('SELECT id, email, role, permissoes FROM dre.usuarios WHERE id=$1', [payload.id]);
+      if (!rows[0]) return res.status(401).json({ error: 'unauthorized' });
+      req.user = { id: rows[0].id, email: rows[0].email, role: rows[0].role };
+      const p = permsDe(rows[0]);
+      if (!lista.some(a => p[a] === 'editar')) return res.status(403).json({ error: 'forbidden' });
+      next();
+    } catch (e) { next(e); }
+  };
+}
 // A auditoria é secundária: se falhar, registra no log mas não derruba a escrita.
 async function logAudit(userId, acao, detalhe) {
   try {
@@ -188,7 +220,7 @@ app.post('/api/auth/login', async (req, res) => {
     const u = rows[0];
     if (!u || !(await bcrypt.compare(senha, u.senha_hash))) return res.status(401).json({ error: 'credenciais inválidas' });
     const token = jwt.sign({ id: u.id, email: u.email, role: u.role }, JWT_SECRET, { expiresIn: '30d' });
-    res.json({ token, user: { email: u.email, role: u.role } });
+    res.json({ token, user: { email: u.email, role: u.role, permissoes: permsDe(u) } });
   } catch (e) {
     console.error('login error:', e && (e.stack || e.code || JSON.stringify(e)));
     res.status(500).json({ error: (e && e.message) || 'erro desconhecido' });
@@ -210,12 +242,18 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+app.get('/api/me', auth(), async (req, res) => {
+  const { rows } = await pool.query('SELECT email, role, permissoes FROM dre.usuarios WHERE id=$1', [req.user.id]);
+  if (!rows[0]) return res.status(401).json({ error: 'unauthorized' });
+  res.json({ email: rows[0].email, role: rows[0].role, permissoes: permsDe(rows[0]) });
+});
+
 // ---------- operações ----------
 app.get('/api/operacoes', auth(), async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM dre.operacoes ORDER BY id');
   res.json(rows);
 });
-app.patch('/api/operacoes/:id/capital-social', auth(['admin', 'usuario']), async (req, res) => {
+app.patch('/api/operacoes/:id/capital-social', perm(['operacao', 'consolidacao', 'balanco']), async (req, res) => {
   const { valor } = req.body;
   await pool.query('UPDATE dre.operacoes SET capital_social=$1 WHERE id=$2', [valor, req.params.id]);
   await logAudit(req.user.id, 'Editou capital social', `operacao=${req.params.id} valor=${valor}`);
@@ -233,7 +271,7 @@ app.get('/api/operacoes/:opId/credores', auth(), async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM dre.credores_manuais WHERE operacao_id=$1', [req.params.opId]);
   res.json(rows);
 });
-app.post('/api/operacoes/:opId/credores', auth(['admin', 'usuario']), async (req, res) => {
+app.post('/api/operacoes/:opId/credores', perm(['operacao', 'consolidacao', 'balanco']), async (req, res) => {
   const { nome, mes, ano, grupo } = req.body;
   const { rows } = await pool.query(
     'INSERT INTO dre.credores_manuais (operacao_id, nome, mes, ano, grupo) VALUES ($1,$2,$3,$4,$5) RETURNING *',
@@ -242,7 +280,7 @@ app.post('/api/operacoes/:opId/credores', auth(['admin', 'usuario']), async (req
   await logAudit(req.user.id, 'Adicionou credor (Passivo)', `${req.params.opId} · ${nome} · ${mes}/${ano}`);
   res.json(rows[0]);
 });
-app.delete('/api/credores/:id', auth(['admin', 'usuario']), async (req, res) => {
+app.delete('/api/credores/:id', perm(['operacao', 'consolidacao', 'balanco']), async (req, res) => {
   await pool.query('DELETE FROM dre.credores_manuais WHERE id=$1', [req.params.id]);
   await logAudit(req.user.id, 'Removeu credor (Passivo)', req.params.id);
   res.json({ ok: true });
@@ -257,7 +295,7 @@ app.get('/api/lancamentos', auth(), async (req, res) => {
   );
   res.json(rows);
 });
-app.put('/api/lancamentos', auth(['admin', 'usuario']), async (req, res) => {
+app.put('/api/lancamentos', perm(['operacao', 'consolidacao', 'balanco']), async (req, res) => {
   const { operacaoId, categoriaId, credorManualId, mes, ano, valor } = req.body;
   // ON CONFLICT não serve aqui: categoria_id/credor_manual_id são NULL em metade
   // dos casos e NULL nunca conflita com NULL no índice único — cada edição criava
@@ -285,7 +323,7 @@ app.get('/api/dividas', auth(), async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM dre.dividas ORDER BY criado_em');
   res.json(rows);
 });
-app.post('/api/dividas', auth(['admin', 'usuario']), async (req, res) => {
+app.post('/api/dividas', perm('passivo'), async (req, res) => {
   const { credor, valorInicial, mesInicial, anoInicial, jurosMensal } = req.body;
   const { rows } = await pool.query(
     `INSERT INTO dre.dividas (credor, valor_inicial, mes_inicial, ano_inicial, juros_mensal, criado_por)
@@ -295,7 +333,7 @@ app.post('/api/dividas', auth(['admin', 'usuario']), async (req, res) => {
   await logAudit(req.user.id, 'Adicionou dívida', `${credor} · inicial ${valorInicial}`);
   res.json(rows[0]);
 });
-app.delete('/api/dividas/:id', auth(['admin', 'usuario']), async (req, res) => {
+app.delete('/api/dividas/:id', perm('passivo'), async (req, res) => {
   await pool.query('DELETE FROM dre.dividas WHERE id=$1', [req.params.id]);
   await logAudit(req.user.id, 'Removeu dívida', req.params.id);
   res.json({ ok: true });
@@ -334,7 +372,7 @@ app.get('/api/faturas', auth(), async (req, res) => {
   res.json({ faturas: rows.map(faturaOut), tipos: tipos.map(t => t.nome) });
 });
 
-app.post('/api/faturas', auth(['admin', 'usuario']), async (req, res) => {
+app.post('/api/faturas', perm('faturas'), async (req, res) => {
   const { desc, tipo, comp, venc, valor, mov, responsavel } = req.body;
   if (!desc || !String(desc).trim()) return res.status(400).json({ erro: 'descricao obrigatoria' });
   const competencia = compToDate(comp) || new Date().toISOString().slice(0, 8) + '01';
@@ -347,7 +385,7 @@ app.post('/api/faturas', auth(['admin', 'usuario']), async (req, res) => {
   res.json(faturaOut(rows[0]));
 });
 
-app.patch('/api/faturas/:id', auth(['admin', 'usuario']), async (req, res) => {
+app.patch('/api/faturas/:id', perm('faturas'), async (req, res) => {
   const { tipo, comp, venc, valor, mov, desc, conferida, responsavel, recebido, recBanco } = req.body;
   const sets = [];
   const vals = [];
@@ -386,13 +424,13 @@ app.patch('/api/faturas/:id', auth(['admin', 'usuario']), async (req, res) => {
   res.json(faturaOut(rows[0]));
 });
 
-app.delete('/api/faturas/:id', auth(['admin', 'usuario']), async (req, res) => {
+app.delete('/api/faturas/:id', perm('faturas'), async (req, res) => {
   const { rows } = await pool.query('DELETE FROM dre.faturas WHERE id=$1 RETURNING descricao', [req.params.id]);
   await logAudit(req.user.id, 'Removeu fatura', (rows[0] && rows[0].descricao) || req.params.id);
   res.json({ ok: true });
 });
 
-app.post('/api/faturas/tipos', auth(['admin', 'usuario']), async (req, res) => {
+app.post('/api/faturas/tipos', perm('faturas'), async (req, res) => {
   const nome = String(req.body.nome || '').trim();
   if (!nome) return res.status(400).json({ erro: 'nome obrigatorio' });
   await pool.query(
@@ -404,7 +442,7 @@ app.post('/api/faturas/tipos', auth(['admin', 'usuario']), async (req, res) => {
 
 // Apaga um tipo de fatura. Desativa (ativo=false) para não perder o histórico
 // das faturas já lançadas com esse nome.
-app.delete('/api/faturas/tipos/:nome', auth(['admin', 'usuario']), async (req, res) => {
+app.delete('/api/faturas/tipos/:nome', perm('faturas'), async (req, res) => {
   const nome = String(req.params.nome || '').trim();
   const { rows: uso } = await pool.query(
     'SELECT count(*)::int AS n FROM dre.faturas WHERE tipo_nome=$1', [nome]);
@@ -421,7 +459,7 @@ app.get('/api/responsaveis', auth(), async (req, res) => {
   const { rows } = await pool.query('SELECT nome FROM dre.responsaveis WHERE ativo ORDER BY nome');
   res.json({ responsaveis: rows.map(r => r.nome) });
 });
-app.post('/api/responsaveis', auth(['admin', 'usuario']), async (req, res) => {
+app.post('/api/responsaveis', perm('faturas'), async (req, res) => {
   const nome = String(req.body.nome || '').trim();
   if (!nome) return res.status(400).json({ erro: 'nome obrigatorio' });
   await pool.query(
@@ -430,7 +468,7 @@ app.post('/api/responsaveis', auth(['admin', 'usuario']), async (req, res) => {
   res.json({ ok: true });
 });
 // Desativa: faturas antigas continuam mostrando o nome gravado.
-app.delete('/api/responsaveis/:nome', auth(['admin', 'usuario']), async (req, res) => {
+app.delete('/api/responsaveis/:nome', perm('faturas'), async (req, res) => {
   const nome = String(req.params.nome || '').trim();
   await pool.query('UPDATE dre.responsaveis SET ativo=false WHERE nome=$1', [nome]);
   await logAudit(req.user.id, 'Removeu responsável', nome);
@@ -442,14 +480,14 @@ app.get('/api/bancos', auth(), async (req, res) => {
   const { rows } = await pool.query('SELECT nome FROM dre.bancos WHERE ativo ORDER BY nome');
   res.json({ bancos: rows.map(r => r.nome) });
 });
-app.post('/api/bancos', auth(['admin', 'usuario']), async (req, res) => {
+app.post('/api/bancos', perm('faturas'), async (req, res) => {
   const nome = String(req.body.nome || '').trim();
   if (!nome) return res.status(400).json({ erro: 'nome obrigatorio' });
   await pool.query('INSERT INTO dre.bancos (nome) VALUES ($1) ON CONFLICT (nome) DO UPDATE SET ativo=true', [nome]);
   await logAudit(req.user.id, 'Cadastrou banco', nome);
   res.json({ ok: true });
 });
-app.delete('/api/bancos/:nome', auth(['admin', 'usuario']), async (req, res) => {
+app.delete('/api/bancos/:nome', perm('faturas'), async (req, res) => {
   const nome = String(req.params.nome || '').trim();
   await pool.query('UPDATE dre.bancos SET ativo=false WHERE nome=$1', [nome]);
   await logAudit(req.user.id, 'Removeu banco', nome);
@@ -467,20 +505,20 @@ app.get('/api/faturas-adm', auth(), async (req, res) => {
   const { rows: tipos } = await pool.query('SELECT nome FROM dre.faturas_adm_tipos WHERE ativo ORDER BY ordem, nome');
   res.json({ itens: rows.map(admOut), tipos: tipos.map(t => t.nome) });
 });
-app.post('/api/faturas-adm/tipos', auth(['admin', 'usuario']), async (req, res) => {
+app.post('/api/faturas-adm/tipos', perm('faturas'), async (req, res) => {
   const nome = String(req.body.nome || '').trim();
   if (!nome) return res.status(400).json({ erro: 'nome obrigatorio' });
   await pool.query('INSERT INTO dre.faturas_adm_tipos (nome) VALUES ($1) ON CONFLICT (nome) DO UPDATE SET ativo=true', [nome]);
   res.json({ ok: true });
 });
-app.delete('/api/faturas-adm/tipos/:nome', auth(['admin', 'usuario']), async (req, res) => {
+app.delete('/api/faturas-adm/tipos/:nome', perm('faturas'), async (req, res) => {
   const nome = String(req.params.nome || '').trim();
   const { rows } = await pool.query('SELECT count(*)::int AS n FROM dre.faturas_adm WHERE tipo=$1', [nome]);
   if (rows[0].n > 0) return res.status(409).json({ erro: 'tipo em uso' });
   await pool.query('UPDATE dre.faturas_adm_tipos SET ativo=false WHERE nome=$1', [nome]);
   res.json({ ok: true });
 });
-app.post('/api/faturas-adm', auth(['admin', 'usuario']), async (req, res) => {
+app.post('/api/faturas-adm', perm('faturas'), async (req, res) => {
   const { nome, tipo, loja, venc, valor } = req.body;
   if (!String(nome || '').trim()) return res.status(400).json({ erro: 'nome obrigatorio' });
   const { rows } = await pool.query(
@@ -490,7 +528,7 @@ app.post('/api/faturas-adm', auth(['admin', 'usuario']), async (req, res) => {
   await logAudit(req.user.id, 'Lançou fatura administrativa', `${rows[0].nome} · ${rows[0].loja}`);
   res.json(admOut(rows[0]));
 });
-app.patch('/api/faturas-adm/:id', auth(['admin', 'usuario']), async (req, res) => {
+app.patch('/api/faturas-adm/:id', perm('faturas'), async (req, res) => {
   const { nome, tipo, loja, venc, valor, pago } = req.body;
   const sets = [];
   const vals = [];
@@ -515,7 +553,7 @@ app.patch('/api/faturas-adm/:id', auth(['admin', 'usuario']), async (req, res) =
   }
   res.json(admOut(rows[0]));
 });
-app.delete('/api/faturas-adm/:id', auth(['admin', 'usuario']), async (req, res) => {
+app.delete('/api/faturas-adm/:id', perm('faturas'), async (req, res) => {
   const { rows } = await pool.query('DELETE FROM dre.faturas_adm WHERE id=$1 RETURNING nome, loja', [req.params.id]);
   if (rows.length) await logAudit(req.user.id, 'Excluiu fatura administrativa', `${rows[0].nome} · ${rows[0].loja}`);
   res.json({ ok: true });
@@ -550,7 +588,7 @@ app.get('/api/cartoes', auth(), async (req, res) => {
   res.json({ cartoes, checks });
 });
 
-app.post('/api/cartoes', auth(['admin', 'usuario']), async (req, res) => {
+app.post('/api/cartoes', perm('faturas'), async (req, res) => {
   const nome = String(req.body.nome || '').trim();
   const dia = Math.min(31, Math.max(1, parseInt(req.body.dia, 10) || 1));
   if (!nome) return res.status(400).json({ erro: 'nome obrigatorio' });
@@ -562,7 +600,7 @@ app.post('/api/cartoes', auth(['admin', 'usuario']), async (req, res) => {
   res.json({ id: rows[0].id });
 });
 
-app.patch('/api/cartoes/:id', auth(['admin', 'usuario']), async (req, res) => {
+app.patch('/api/cartoes/:id', perm('faturas'), async (req, res) => {
   const { nome, dia, valor } = req.body;
   const sets = [];
   const vals = [];
@@ -577,7 +615,7 @@ app.patch('/api/cartoes/:id', auth(['admin', 'usuario']), async (req, res) => {
 });
 
 // Exclui a partir de uma competência: meses anteriores ficam preservados.
-app.delete('/api/cartoes/:id', auth(['admin', 'usuario']), async (req, res) => {
+app.delete('/api/cartoes/:id', perm('faturas'), async (req, res) => {
   const comp = compToDate(req.query.comp) || new Date().toISOString().slice(0, 8) + '01';
   const { rows } = await pool.query('SELECT nome, inicio FROM dre.cartoes WHERE id=$1', [req.params.id]);
   if (!rows.length) return res.status(404).json({ erro: 'cartao inexistente' });
@@ -590,7 +628,7 @@ app.delete('/api/cartoes/:id', auth(['admin', 'usuario']), async (req, res) => {
   res.json({ ok: true });
 });
 
-app.patch('/api/cartoes/checks/:id', auth(['admin', 'usuario']), async (req, res) => {
+app.patch('/api/cartoes/checks/:id', perm('faturas'), async (req, res) => {
   const { conferido, valor, removido } = req.body;
   const sets = [];
   const vals = [];
@@ -616,8 +654,8 @@ app.patch('/api/cartoes/checks/:id', auth(['admin', 'usuario']), async (req, res
 
 // ---------- usuários (admin) ----------
 app.get('/api/usuarios', auth(['admin']), async (req, res) => {
-  const { rows } = await pool.query('SELECT id, email, role FROM dre.usuarios ORDER BY id');
-  res.json(rows);
+  const { rows } = await pool.query('SELECT id, email, role, permissoes FROM dre.usuarios ORDER BY id');
+  res.json(rows.map(u => ({ id: u.id, email: u.email, role: u.role, permissoes: permsDe(u) })));
 });
 app.post('/api/usuarios', auth(['admin']), async (req, res) => {
   const { email, senha, role } = req.body;
@@ -632,6 +670,14 @@ app.post('/api/usuarios', auth(['admin']), async (req, res) => {
 app.patch('/api/usuarios/:id/role', auth(['admin']), async (req, res) => {
   await pool.query('UPDATE dre.usuarios SET role=$1 WHERE id=$2', [req.body.role, req.params.id]);
   await logAudit(req.user.id, 'Alterou papel', `${req.params.id} → ${req.body.role}`);
+  res.json({ ok: true });
+});
+app.patch('/api/usuarios/:id/permissoes', auth(['admin']), async (req, res) => {
+  const inp = req.body.permissoes || {};
+  const p = {};
+  ABAS.forEach(a => { if (NIVEIS.includes(inp[a])) p[a] = inp[a]; });
+  const { rows } = await pool.query('UPDATE dre.usuarios SET permissoes=$1 WHERE id=$2 RETURNING email', [JSON.stringify(p), req.params.id]);
+  await logAudit(req.user.id, 'Alterou permissões', `${(rows[0] && rows[0].email) || req.params.id} · ${ABAS.map(a => a + ':' + (p[a] || '-')).join(' ')}`);
   res.json({ ok: true });
 });
 app.patch('/api/usuarios/:id/senha', auth(['admin']), async (req, res) => {
