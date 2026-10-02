@@ -159,7 +159,9 @@ async function bootstrapSchema() {
     console.error('bootstrapSchema cartoes falhou:', e.message);
   }
 }
-bootstrapSchema();
+const schemaReady = bootstrapSchema();
+// Em serverless (Vercel) cada instância nova roda as migrações; espera terminar antes de atender.
+app.use((req, res, next) => { schemaReady.then(() => next(), () => next()); });
 
 app.get('/api/health', (req, res) => res.json({ ok: true, versao: 'cartoes-2026-09-23' }));
 app.use(express.static(require('path').join(__dirname, 'public')));
@@ -725,4 +727,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: (err && err.message) || 'erro interno' });
 });
 
-app.listen(process.env.PORT || 3001, () => console.log('DRE Azul backend on :' + (process.env.PORT || 3001)));
+if (require.main === module) {
+  app.listen(process.env.PORT || 3001, () => console.log('DRE Azul backend on :' + (process.env.PORT || 3001)));
+}
+module.exports = app;
