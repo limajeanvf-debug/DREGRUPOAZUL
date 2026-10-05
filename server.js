@@ -8,11 +8,11 @@ const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_URL;
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false }
+  connectionString: dbUrl,
+  ssl: !dbUrl || dbUrl.includes('localhost') ? false : { rejectUnauthorized: false }
 });
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me';
 
