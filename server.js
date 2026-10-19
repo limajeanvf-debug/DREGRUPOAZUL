@@ -8,11 +8,11 @@ const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 
 const app = express();
-const dbUrl = process.env.DATABASE_URL || process.env.SUPABASE_URL;
-
+app.use(cors());
+app.use(express.json());
 const pool = new Pool({
-  connectionString: dbUrl,
-  ssl: !dbUrl || dbUrl.includes('localhost') ? false : { rejectUnauthorized: false }
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false }
 });
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me';
 
@@ -159,9 +159,7 @@ async function bootstrapSchema() {
     console.error('bootstrapSchema cartoes falhou:', e.message);
   }
 }
-const schemaReady = bootstrapSchema();
-// Em serverless (Vercel) cada instância nova roda as migrações; espera terminar antes de atender.
-app.use((req, res, next) => { schemaReady.then(() => next(), () => next()); });
+bootstrapSchema();
 
 app.get('/api/health', (req, res) => res.json({ ok: true, versao: 'cartoes-2026-09-23' }));
 app.use(express.static(require('path').join(__dirname, 'public')));
@@ -727,7 +725,4 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: (err && err.message) || 'erro interno' });
 });
 
-if (require.main === module) {
-  app.listen(process.env.PORT || 3001, () => console.log('DRE Azul backend on :' + (process.env.PORT || 3001)));
-}
-module.exports = app;
+app.listen(process.env.PORT || 3001, () => console.log('DRE Azul backend on :' + (process.env.PORT || 3001)));
