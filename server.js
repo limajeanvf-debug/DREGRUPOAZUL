@@ -6,10 +6,14 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
+const { logger, requestId, httpLog } = require('./logger');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+app.set('trust proxy', 1);
+app.use(requestId);
+app.use(httpLog);
+app.use(cors({ exposedHeaders: ['X-Request-Id'] }));
+app.use(express.json({ limit: '8mb' }));
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false }
@@ -50,13 +54,13 @@ async function bootstrapSchema() {
     }
     const { rows } = await pool.query(
       `SELECT codigo FROM dre.categorias WHERE codigo IN ('ocu_internet','out_publicidade','out_royalties')`);
-    console.log('schema ok · categorias novas presentes:', rows.map(r => r.codigo).join(', ') || 'nenhuma');
+    logger.info('schema ok · categorias novas presentes: ' + (rows.map(r => r.codigo).join(', ') || 'nenhuma'));
   } catch (e) {
-    console.error('bootstrapSchema falhou:', e.message);
+    logger.error('bootstrapSchema falhou: ' + (e.message));
   }
   try {
     await pool.query('ALTER TABLE dre.usuarios ADD COLUMN IF NOT EXISTS permissoes JSONB');
-  } catch (e) { console.error('permissoes falhou:', e.message); }
+  } catch (e) { logger.error('permissoes falhou: ' + (e.message)); }
   // Controle de faturas: tabelas próprias, sem tocar em nada do DRE.
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS dre.fatura_tipos (
@@ -99,9 +103,9 @@ async function bootstrapSchema() {
         `INSERT INTO dre.fatura_tipos (nome, ordem) VALUES ($1,$2) ON CONFLICT (nome) DO NOTHING`, t);
     }
     const { rows: fr } = await pool.query('SELECT count(*)::int AS n FROM dre.faturas');
-    console.log('schema faturas ok · faturas no banco:', fr[0].n);
+    logger.info('schema faturas ok · faturas no banco: ' + (fr[0].n));
   } catch (e) {
-    console.error('bootstrapSchema faturas falhou:', e.message);
+    logger.error('bootstrapSchema faturas falhou: ' + (e.message));
   }
   // Responsáveis e checklist de cartões: também isolados do DRE.
   try {
@@ -154,15 +158,81 @@ async function bootstrapSchema() {
       criado_por INT,
       criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
-    console.log('schema cartoes/responsaveis/adm ok');
+    logger.info('schema cartoes/responsaveis/adm ok');
   } catch (e) {
-    console.error('bootstrapSchema cartoes falhou:', e.message);
+    logger.error('bootstrapSchema cartoes falhou: ' + (e.message));
   }
 }
-bootstrapSchema();
+bootstrapSchema().then(bootstrapModulos)
+  .then(() => bootstrapHelpdesk())
+  .then(() => comercial.bootstrap())
+  .then(() => fatDiario.bootstrap())
+  .catch(e => logger.error('módulos (bootstrap) falhou: ' + (e.message)));
 
-app.get('/api/health', (req, res) => res.json({ ok: true, versao: 'cartoes-2026-09-23' }));
-app.use(express.static(require('path').join(__dirname, 'public')));
+app.get('/api/health', (req, res) => res.json({ ok: true, versao: 'helpdesk-modulo-2026-10-27b',
+  helpdeskTela: require('fs').existsSync(require('path').join(__dirname, 'modulos', 'helpdesk-azul', 'public', 'index.html')) }));
+// ---------- Help Desk (módulo modulos/helpdesk-azul, montado em /helpdesk) ----------
+// Login único: o usuário vem do token do Sistema Grupo Azul (cookie hd_token ou header Authorization).
+// Perfil pela permissão "Help desk": admin → Administrador · editar → Help desk · ver → Agente.
+const HD_DIR = require('path').join(__dirname, 'modulos', 'helpdesk-azul');
+const HD_LOCAL = !!(process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost'));
+process.env.DB_SCHEMA = process.env.DB_SCHEMA || 'helpdesk_azul'; // schema próprio: o antigo "helpdesk" tem outra estrutura
+process.env.DB_SSL = HD_LOCAL ? 'false' : 'true';
+process.env.UPLOAD_DIR = process.env.UPLOAD_DIR || require('path').join(HD_DIR, 'uploads');
+function lerCookie(req, nome) {
+  const c = (req.headers.cookie || '').split(/;\s*/).find(x => x.startsWith(nome + '='));
+  return c ? decodeURIComponent(c.slice(nome.length + 1)) : '';
+}
+// Tela do help desk servida explicitamente (se faltar no deploy, mostra o motivo em vez de "Cannot GET").
+app.get(['/helpdesk', '/helpdesk/', '/helpdesk/index.html'], (req, res, next) => {
+  if (req.path === '/helpdesk') return res.redirect(301, '/helpdesk/');
+  const f = require('path').join(HD_DIR, 'public', 'index.html');
+  if (!require('fs').existsSync(f)) return res.status(500).send('Help desk: arquivo modulos/helpdesk-azul/public/index.html não foi enviado ao servidor.');
+  res.set('Cache-Control', 'no-cache').sendFile(f);
+});
+const criarHelpdesk = require('./modulos/helpdesk-azul');
+app.use('/helpdesk', criarHelpdesk({
+  obterUsuario: async req => {
+    const token = (req.headers.authorization || '').replace('Bearer ', '') || String((req.query && req.query.t) || '') || lerCookie(req, 'hd_token');
+    if (!token) return null;
+    let p; try { p = jwt.verify(token, JWT_SECRET); } catch (e) { return null; }
+    if (p.tipo) return null;
+    const { rows } = await pool.query('SELECT id, email, role, permissoes FROM dre.usuarios WHERE id=$1', [p.id]);
+    const u = rows[0];
+    if (!u) return null;
+    const nivel = permsDe(u).helpdesk;
+    if (nivel === 'nenhum') return null;
+    return { id: 'dre-' + u.id, email: u.email, perfil: u.role === 'admin' ? 'admin' : nivel === 'editar' ? 'suporte' : 'agente' };
+  },
+  perfilPeloSistema: true,
+  urlEntrar: '/',
+  urlPublica: (process.env.APP_URL || 'https://dregrupoazul.onrender.com') + '/helpdesk',
+  banco: { connectionString: process.env.DATABASE_URL, ssl: !HD_LOCAL, schema: process.env.DB_SCHEMA },
+  pastaUploads: process.env.UPLOAD_DIR,
+}));
+// Cria as tabelas do help desk e importa os dados atuais (o importador ignora o que já existe).
+async function bootstrapHelpdesk() {
+  const fs = require('fs'), path = require('path');
+  const hdDb = require('./modulos/helpdesk-azul/src/db');
+  const schema = hdDb.schema;
+  const sql = fs.readFileSync(path.join(HD_DIR, 'database', 'schema.sql'), 'utf8')
+    .replace('CREATE SCHEMA IF NOT EXISTS helpdesk;', `CREATE SCHEMA IF NOT EXISTS ${schema};`)
+    .replace('SET search_path TO helpdesk, public;', `SET search_path TO ${schema}, public;`);
+  await hdDb.pool.query(sql);
+  logger.info(`help desk: tabelas ok no schema "${schema}"`);
+  if (fs.existsSync(path.join(HD_DIR, 'dados-importacao'))) {
+    await new Promise(resolve => {
+      const p = require('child_process').spawn(process.execPath, [path.join(HD_DIR, 'scripts', 'importar-claude.js')], { env: process.env, stdio: 'inherit' });
+      p.on('exit', resolve); p.on('error', e => { logger.error('help desk: importação falhou: ' + (e.message)); resolve(); });
+    });
+  }
+}
+// no-cache = o navegador sempre confere se há versão nova (ETag), então um deploy aparece sem Ctrl+F5.
+app.use(express.static(require('path').join(__dirname, 'public'), { setHeaders: res => res.setHeader('Cache-Control', 'no-cache') }));
+// Comercial: relatórios de vendas, rotas em /api/comercial.
+const comercial = require('./comercial')(app, { pool, permMin, logAudit });
+// Financeiro · Faturamento diário (Azul Viagens, Sonho Azul, Arranjos Express), rotas em /api/fatdiario.
+const fatDiario = require('./fatdiario')(app, { pool, permMin, logAudit });
 
 // ---------- auth middleware ----------
 function auth(requiredRoles) {
@@ -170,6 +240,7 @@ function auth(requiredRoles) {
     const token = (req.headers.authorization || '').replace('Bearer ', '');
     try {
       const payload = jwt.verify(token, JWT_SECRET);
+      if (payload.tipo) return res.status(401).json({ error: 'unauthorized' }); // token do Portal do Colaborador
       req.user = payload; // {id, email, role}
       if (requiredRoles && !requiredRoles.includes(payload.role)) return res.status(403).json({ error: 'forbidden' });
       next();
@@ -179,13 +250,20 @@ function auth(requiredRoles) {
 // ---------- permissões por aba ----------
 // nenhum = aba oculta · ver = somente leitura · editar = leitura e escrita.
 // Sem registro salvo, vale o papel: leitor → ver, usuario → editar. Admin sempre editar.
-const ABAS = ['operacao', 'consolidacao', 'balanco', 'passivo', 'faturas'];
+const ABAS = ['operacao', 'consolidacao', 'balanco', 'passivo', 'faturas', 'contasadm', 'importacao', 'conferencia', 'fatdiario', 'helpdesk', 'rh', 'comercial'];
+// Módulos novos têm padrão próprio: todos abrem chamados; RH fica fechado até o admin liberar.
+const PADRAO_MOD = { helpdesk: 'ver', rh: 'nenhum', comercial: 'nenhum' };
+const RANK = { nenhum: 0, ver: 1, editar: 2 };
 const NIVEIS = ['nenhum', 'ver', 'editar'];
 function permsDe(u) {
   const base = u.role === 'leitor' ? 'ver' : 'editar';
   const p = (u.permissoes && typeof u.permissoes === 'object') ? u.permissoes : {};
   const out = {};
-  ABAS.forEach(a => { out[a] = u.role === 'admin' ? 'editar' : (NIVEIS.includes(p[a]) ? p[a] : base); });
+  ABAS.forEach(a => { out[a] = u.role === 'admin' ? 'editar' : (NIVEIS.includes(p[a]) ? p[a] : (PADRAO_MOD[a] || base)); });
+  // Aba nova: quem não tem registro herda o nível de "Por operação".
+  if (u.role !== 'admin' && !NIVEIS.includes(p.importacao)) out.importacao = out.operacao;
+  if (u.role !== 'admin' && !NIVEIS.includes(p.contasadm)) out.contasadm = out.faturas;
+  if (u.role !== 'admin' && !NIVEIS.includes(p.fatdiario)) out.fatdiario = out.operacao;
   return out;
 }
 // Lê do banco a cada escrita: a mudança feita pelo admin vale sem novo login.
@@ -209,20 +287,20 @@ function perm(abas) {
 async function logAudit(userId, acao, detalhe) {
   try {
     await pool.query('INSERT INTO dre.auditoria (usuario_id, acao, detalhe) VALUES ($1,$2,$3)', [userId, acao, detalhe]);
-  } catch (e) { console.error('auditoria falhou:', e.message); }
+  } catch (e) { logger.error('auditoria falhou: ' + (e.message)); }
 }
 
 // ---------- auth ----------
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, senha } = req.body;
-    const { rows } = await pool.query('SELECT * FROM dre.usuarios WHERE email=$1', [email]);
+    const { rows } = await pool.query('SELECT * FROM dre.usuarios WHERE lower(email)=lower($1) ORDER BY id LIMIT 1', [String(email || '').trim()]);
     const u = rows[0];
-    if (!u || !(await bcrypt.compare(senha, u.senha_hash))) return res.status(401).json({ error: 'credenciais inválidas' });
+    if (!u || !senha || !(await bcrypt.compare(senha, u.senha_hash))) return res.status(401).json({ error: 'credenciais inválidas' });
     const token = jwt.sign({ id: u.id, email: u.email, role: u.role }, JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, user: { email: u.email, role: u.role, permissoes: permsDe(u) } });
   } catch (e) {
-    console.error('login error:', e && (e.stack || e.code || JSON.stringify(e)));
+    (req.log || logger).error('falha no login: ' + ((e && e.message) || e), { codigo: e && e.code, stack: e && e.stack });
     res.status(500).json({ error: (e && e.message) || 'erro desconhecido' });
   }
 });
@@ -237,7 +315,7 @@ app.post('/api/auth/register', async (req, res) => {
     const token = jwt.sign(rows[0], JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, user: rows[0] });
   } catch (e) {
-    console.error('register error:', e && (e.stack || e.code || JSON.stringify(e)));
+    (req.log || logger).error('falha no cadastro: ' + ((e && e.message) || e), { codigo: e && e.code, stack: e && e.stack });
     res.status(500).json({ error: (e && e.message) || 'erro desconhecido' });
   }
 });
@@ -505,20 +583,20 @@ app.get('/api/faturas-adm', auth(), async (req, res) => {
   const { rows: tipos } = await pool.query('SELECT nome FROM dre.faturas_adm_tipos WHERE ativo ORDER BY ordem, nome');
   res.json({ itens: rows.map(admOut), tipos: tipos.map(t => t.nome) });
 });
-app.post('/api/faturas-adm/tipos', perm('faturas'), async (req, res) => {
+app.post('/api/faturas-adm/tipos', perm(['faturas', 'contasadm']), async (req, res) => {
   const nome = String(req.body.nome || '').trim();
   if (!nome) return res.status(400).json({ erro: 'nome obrigatorio' });
   await pool.query('INSERT INTO dre.faturas_adm_tipos (nome) VALUES ($1) ON CONFLICT (nome) DO UPDATE SET ativo=true', [nome]);
   res.json({ ok: true });
 });
-app.delete('/api/faturas-adm/tipos/:nome', perm('faturas'), async (req, res) => {
+app.delete('/api/faturas-adm/tipos/:nome', perm(['faturas', 'contasadm']), async (req, res) => {
   const nome = String(req.params.nome || '').trim();
   const { rows } = await pool.query('SELECT count(*)::int AS n FROM dre.faturas_adm WHERE tipo=$1', [nome]);
   if (rows[0].n > 0) return res.status(409).json({ erro: 'tipo em uso' });
   await pool.query('UPDATE dre.faturas_adm_tipos SET ativo=false WHERE nome=$1', [nome]);
   res.json({ ok: true });
 });
-app.post('/api/faturas-adm', perm('faturas'), async (req, res) => {
+app.post('/api/faturas-adm', perm(['faturas', 'contasadm']), async (req, res) => {
   const { nome, tipo, loja, venc, valor } = req.body;
   if (!String(nome || '').trim()) return res.status(400).json({ erro: 'nome obrigatorio' });
   const { rows } = await pool.query(
@@ -528,7 +606,7 @@ app.post('/api/faturas-adm', perm('faturas'), async (req, res) => {
   await logAudit(req.user.id, 'Lançou fatura administrativa', `${rows[0].nome} · ${rows[0].loja}`);
   res.json(admOut(rows[0]));
 });
-app.patch('/api/faturas-adm/:id', perm('faturas'), async (req, res) => {
+app.patch('/api/faturas-adm/:id', perm(['faturas', 'contasadm']), async (req, res) => {
   const { nome, tipo, loja, venc, valor, pago } = req.body;
   const sets = [];
   const vals = [];
@@ -553,7 +631,7 @@ app.patch('/api/faturas-adm/:id', perm('faturas'), async (req, res) => {
   }
   res.json(admOut(rows[0]));
 });
-app.delete('/api/faturas-adm/:id', perm('faturas'), async (req, res) => {
+app.delete('/api/faturas-adm/:id', perm(['faturas', 'contasadm']), async (req, res) => {
   const { rows } = await pool.query('DELETE FROM dre.faturas_adm WHERE id=$1 RETURNING nome, loja', [req.params.id]);
   if (rows.length) await logAudit(req.user.id, 'Excluiu fatura administrativa', `${rows[0].nome} · ${rows[0].loja}`);
   res.json({ ok: true });
@@ -719,10 +797,300 @@ app.get('/api/locks', auth(), async (req, res) => {
   res.json(rows);
 });
 
-app.use((err, req, res, next) => {
-  console.error('erro não tratado:', err && (err.stack || err.message || err));
-  if (res.headersSent) return next(err);
-  res.status(500).json({ error: (err && err.message) || 'erro interno' });
+
+// ---------- módulos: Help desk e RH ----------
+async function bootstrapModulos() {
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.hd_chamados (
+      id SERIAL PRIMARY KEY, titulo TEXT NOT NULL, categoria TEXT NOT NULL DEFAULT 'Outros',
+      prioridade TEXT NOT NULL DEFAULT 'Média', loja TEXT NOT NULL DEFAULT '', descricao TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'Novo', solicitante_id INT, solicitante_email TEXT NOT NULL,
+      responsavel_email TEXT, criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+      atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(), resolvido_em TIMESTAMPTZ)`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.hd_mensagens (
+      id SERIAL PRIMARY KEY, chamado_id INT NOT NULL REFERENCES dre.hd_chamados(id) ON DELETE CASCADE,
+      autor_email TEXT NOT NULL, texto TEXT NOT NULL, interno BOOLEAN NOT NULL DEFAULT false,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT now())`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.rh_colaboradores (
+      id SERIAL PRIMARY KEY, nome TEXT NOT NULL, cargo TEXT NOT NULL DEFAULT '', loja TEXT NOT NULL DEFAULT '',
+      admissao DATE, salario NUMERIC(14,2) NOT NULL DEFAULT 0, telefone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
+      ativo BOOLEAN NOT NULL DEFAULT true, desligamento DATE, criado_em TIMESTAMPTZ NOT NULL DEFAULT now())`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.rh_ausencias (
+      id SERIAL PRIMARY KEY, colaborador_id INT NOT NULL REFERENCES dre.rh_colaboradores(id) ON DELETE CASCADE,
+      tipo TEXT NOT NULL, inicio DATE NOT NULL, fim DATE NOT NULL, obs TEXT NOT NULL DEFAULT '',
+      criado_por TEXT, criado_em TIMESTAMPTZ NOT NULL DEFAULT now())`);
+    // Painel RH / Portal do Colaborador (Unifica RH): uma linha JSON por coleção.
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.rh_store (
+      chave TEXT PRIMARY KEY, valor JSONB NOT NULL,
+      atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(), atualizado_por TEXT)`);
+  } catch (e) { logger.error('módulos (help desk/RH) falhou: ' + (e.message)); }
+}
+// Confere o nível mínimo no módulo lendo o usuário do banco a cada requisição.
+function permMin(aba, min) {
+  return async (req, res, next) => {
+    let payload;
+    try { payload = jwt.verify((req.headers.authorization || '').replace('Bearer ', ''), JWT_SECRET); }
+    catch (e) { return res.status(401).json({ error: 'unauthorized' }); }
+    try {
+      const { rows } = await pool.query('SELECT id, email, role, permissoes FROM dre.usuarios WHERE id=$1', [payload.id]);
+      if (!rows[0]) return res.status(401).json({ error: 'unauthorized' });
+      req.user = { id: rows[0].id, email: rows[0].email, role: rows[0].role };
+      req.perms = permsDe(rows[0]);
+      if (RANK[req.perms[aba]] < RANK[min]) return res.status(403).json({ error: 'forbidden' });
+      next();
+    } catch (e) { next(e); }
+  };
+}
+const HD_PRIOS = ['Baixa', 'Média', 'Alta', 'Urgente'];
+const HD_STATUS = ['Novo', 'Em atendimento', 'Aguardando solicitante', 'Aguardando fornecedor', 'Resolvido'];
+async function hdCarregar(where, params, verInterno) {
+  const { rows } = await pool.query(`SELECT * FROM dre.hd_chamados ${where} ORDER BY criado_em DESC LIMIT 500`, params);
+  if (!rows.length) return [];
+  const { rows: msgs } = await pool.query(
+    `SELECT * FROM dre.hd_mensagens WHERE chamado_id = ANY($1) ${verInterno ? '' : 'AND NOT interno'} ORDER BY criado_em`,
+    [rows.map(r => r.id)]);
+  return rows.map(r => ({
+    id: r.id, numero: r.id, titulo: r.titulo, categoria: r.categoria, prioridade: r.prioridade, loja: r.loja,
+    descricao: r.descricao, status: r.status, solicitante: r.solicitante_email, responsavel: r.responsavel_email || '',
+    criadoEm: r.criado_em, atualizadoEm: r.atualizado_em, resolvidoEm: r.resolvido_em,
+    mensagens: msgs.filter(m => m.chamado_id === r.id).map(m => ({ id: m.id, autor: m.autor_email, texto: m.texto, interno: m.interno, em: m.criado_em })),
+  }));
+}
+async function hdUm(id, req) {
+  const l = await hdCarregar('WHERE id=$1', [id], req.perms.helpdesk === 'editar');
+  return l[0] || null;
+}
+// Quem edita o Help desk vê todos os chamados; quem só visualiza vê os que abriu.
+app.get('/api/helpdesk/chamados', permMin('helpdesk', 'ver'), async (req, res) => {
+  const edit = req.perms.helpdesk === 'editar';
+  const chamados = edit ? await hdCarregar('', [], true) : await hdCarregar('WHERE solicitante_email=$1', [req.user.email], false);
+  let atendentes = [];
+  if (edit) {
+    const { rows } = await pool.query('SELECT email, role, permissoes FROM dre.usuarios ORDER BY email');
+    atendentes = rows.filter(u => permsDe(u).helpdesk === 'editar').map(u => u.email);
+  }
+  res.json({ chamados, atendentes });
+});
+app.post('/api/helpdesk/chamados', permMin('helpdesk', 'ver'), async (req, res) => {
+  const titulo = String(req.body.titulo || '').trim();
+  if (!titulo) return res.status(400).json({ erro: 'titulo obrigatorio' });
+  const prio = HD_PRIOS.includes(req.body.prioridade) ? req.body.prioridade : 'Média';
+  const { rows } = await pool.query(
+    `INSERT INTO dre.hd_chamados (titulo, categoria, prioridade, loja, descricao, solicitante_id, solicitante_email)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+    [titulo, String(req.body.categoria || 'Outros'), prio, String(req.body.loja || ''), String(req.body.descricao || ''), req.user.id, req.user.email]);
+  await logAudit(req.user.id, 'Abriu chamado', `#${rows[0].id} ${titulo}`);
+  res.json(await hdUm(rows[0].id, req));
+});
+app.patch('/api/helpdesk/chamados/:id', permMin('helpdesk', 'editar'), async (req, res) => {
+  const sets = [], vals = [];
+  const add = (col, v) => { vals.push(v); sets.push(`${col}=$${vals.length}`); };
+  const { status, prioridade, responsavel } = req.body;
+  if (HD_STATUS.includes(status)) { add('status', status); sets.push(status === 'Resolvido' ? 'resolvido_em=now()' : 'resolvido_em=NULL'); }
+  if (HD_PRIOS.includes(prioridade)) add('prioridade', prioridade);
+  if (responsavel !== undefined) add('responsavel_email', String(responsavel || '') || null);
+  if (!sets.length) return res.status(400).json({ erro: 'nada para alterar' });
+  sets.push('atualizado_em=now()');
+  vals.push(req.params.id);
+  await pool.query(`UPDATE dre.hd_chamados SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals);
+  await logAudit(req.user.id, 'Atualizou chamado', `#${req.params.id} ${[status, prioridade, responsavel].filter(v => v !== undefined).join(' · ')}`);
+  res.json(await hdUm(req.params.id, req));
+});
+app.post('/api/helpdesk/chamados/:id/mensagens', permMin('helpdesk', 'ver'), async (req, res) => {
+  const edit = req.perms.helpdesk === 'editar';
+  const { rows } = await pool.query('SELECT solicitante_email FROM dre.hd_chamados WHERE id=$1', [req.params.id]);
+  if (!rows[0]) return res.status(404).json({ erro: 'chamado não encontrado' });
+  if (!edit && rows[0].solicitante_email !== req.user.email) return res.status(403).json({ error: 'forbidden' });
+  const texto = String(req.body.texto || '').trim();
+  if (!texto) return res.status(400).json({ erro: 'texto obrigatorio' });
+  const interno = edit && !!req.body.interno;
+  await pool.query('INSERT INTO dre.hd_mensagens (chamado_id, autor_email, texto, interno) VALUES ($1,$2,$3,$4)', [req.params.id, req.user.email, texto, interno]);
+  if (edit && !interno) {
+    // primeira resposta do suporte assume o chamado
+    await pool.query(`UPDATE dre.hd_chamados SET status=CASE WHEN status='Novo' THEN 'Em atendimento' ELSE status END,
+      responsavel_email=COALESCE(responsavel_email,$2), atualizado_em=now() WHERE id=$1`, [req.params.id, req.user.email]);
+  } else if (!edit) {
+    await pool.query(`UPDATE dre.hd_chamados SET status=CASE WHEN status='Aguardando solicitante' THEN 'Em atendimento' ELSE status END,
+      atualizado_em=now() WHERE id=$1`, [req.params.id]);
+  }
+  res.json(await hdUm(req.params.id, req));
 });
 
-app.listen(process.env.PORT || 3001, () => console.log('DRE Azul backend on :' + (process.env.PORT || 3001)));
+const RH_TIPOS = ['Férias', 'Atestado médico', 'Folga', 'Licença', 'Falta'];
+const RH_COLS = `id, nome, cargo, loja, to_char(admissao,'YYYY-MM-DD') AS admissao, salario, telefone, email, ativo,
+  to_char(desligamento,'YYYY-MM-DD') AS desligamento`;
+const rhOut = (r, verSalario) => ({ id: r.id, nome: r.nome, cargo: r.cargo, loja: r.loja, admissao: r.admissao || '',
+  salario: verSalario ? Number(r.salario) : null, telefone: r.telefone, email: r.email, ativo: r.ativo, desligamento: r.desligamento || '' });
+const ausOut = (a) => ({ id: a.id, colaboradorId: a.colaborador_id, tipo: a.tipo, inicio: a.inicio, fim: a.fim, obs: a.obs });
+// Salário só aparece para quem edita o RH.
+app.get('/api/rh', permMin('rh', 'ver'), async (req, res) => {
+  const edit = req.perms.rh === 'editar';
+  const { rows } = await pool.query(`SELECT ${RH_COLS} FROM dre.rh_colaboradores ORDER BY nome`);
+  const { rows: aus } = await pool.query(`SELECT id, colaborador_id, tipo, to_char(inicio,'YYYY-MM-DD') AS inicio,
+    to_char(fim,'YYYY-MM-DD') AS fim, obs FROM dre.rh_ausencias ORDER BY inicio DESC`);
+  res.json({ colaboradores: rows.map(r => rhOut(r, edit)), ausencias: aus.map(ausOut) });
+});
+app.post('/api/rh/colaboradores', permMin('rh', 'editar'), async (req, res) => {
+  const b = req.body; const nome = String(b.nome || '').trim();
+  if (!nome) return res.status(400).json({ erro: 'nome obrigatorio' });
+  const { rows } = await pool.query(
+    `INSERT INTO dre.rh_colaboradores (nome, cargo, loja, admissao, salario, telefone, email)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING ${RH_COLS}`,
+    [nome, String(b.cargo || ''), String(b.loja || ''), b.admissao || null, Number(b.salario) || 0, String(b.telefone || ''), String(b.email || '')]);
+  await logAudit(req.user.id, 'Cadastrou colaborador', nome);
+  res.json(rhOut(rows[0], true));
+});
+app.patch('/api/rh/colaboradores/:id', permMin('rh', 'editar'), async (req, res) => {
+  const b = req.body; const sets = [], vals = [];
+  const add = (col, v) => { vals.push(v); sets.push(`${col}=$${vals.length}`); };
+  if (b.nome !== undefined) { const n = String(b.nome).trim(); if (!n) return res.status(400).json({ erro: 'nome obrigatorio' }); add('nome', n); }
+  ['cargo', 'loja', 'telefone', 'email'].forEach(c => { if (b[c] !== undefined) add(c, String(b[c] || '')); });
+  if (b.admissao !== undefined) add('admissao', b.admissao || null);
+  if (b.salario !== undefined) add('salario', Number(b.salario) || 0);
+  if (b.ativo !== undefined) { add('ativo', !!b.ativo); sets.push(b.ativo ? 'desligamento=NULL' : 'desligamento=CURRENT_DATE'); }
+  if (!sets.length) return res.status(400).json({ erro: 'nada para alterar' });
+  vals.push(req.params.id);
+  const { rows } = await pool.query(`UPDATE dre.rh_colaboradores SET ${sets.join(', ')} WHERE id=$${vals.length} RETURNING ${RH_COLS}`, vals);
+  if (!rows[0]) return res.status(404).json({ erro: 'colaborador não encontrado' });
+  await logAudit(req.user.id, b.ativo === false ? 'Desligou colaborador' : b.ativo === true ? 'Reativou colaborador' : 'Editou colaborador', rows[0].nome);
+  res.json(rhOut(rows[0], true));
+});
+app.post('/api/rh/ausencias', permMin('rh', 'editar'), async (req, res) => {
+  const b = req.body;
+  if (!b.colaboradorId || !b.inicio || !b.fim) return res.status(400).json({ erro: 'dados incompletos' });
+  if (b.fim < b.inicio) return res.status(400).json({ erro: 'fim antes do início' });
+  const tipo = RH_TIPOS.includes(b.tipo) ? b.tipo : 'Folga';
+  const { rows } = await pool.query(
+    `INSERT INTO dre.rh_ausencias (colaborador_id, tipo, inicio, fim, obs, criado_por) VALUES ($1,$2,$3,$4,$5,$6)
+     RETURNING id, colaborador_id, tipo, to_char(inicio,'YYYY-MM-DD') AS inicio, to_char(fim,'YYYY-MM-DD') AS fim, obs`,
+    [b.colaboradorId, tipo, b.inicio, b.fim, String(b.obs || ''), req.user.email]);
+  await logAudit(req.user.id, 'Registrou ausência', `${tipo} · colaborador ${b.colaboradorId} · ${b.inicio} a ${b.fim}`);
+  res.json(ausOut(rows[0]));
+});
+app.delete('/api/rh/ausencias/:id', permMin('rh', 'editar'), async (req, res) => {
+  await pool.query('DELETE FROM dre.rh_ausencias WHERE id=$1', [req.params.id]);
+  await logAudit(req.user.id, 'Excluiu ausência', req.params.id);
+  res.json({ ok: true });
+});
+
+// ---------- Painel RH e Portal do Colaborador (Unifica RH) ----------
+const RH_KEYS = ['unificarh_usuarios', 'unificarh_docs', 'unificarh_avisos', 'unificarh_solicitacoes', 'unificarh_atestados', 'unificarh_painel'];
+async function rhLer(chave, padrao) {
+  const { rows } = await pool.query('SELECT valor FROM dre.rh_store WHERE chave=$1', [chave]);
+  return rows[0] ? rows[0].valor : padrao;
+}
+async function rhGravar(chave, valor, por) {
+  await pool.query(
+    `INSERT INTO dre.rh_store (chave, valor, atualizado_por) VALUES ($1,$2::jsonb,$3)
+     ON CONFLICT (chave) DO UPDATE SET valor=$2::jsonb, atualizado_em=now(), atualizado_por=$3`,
+    [chave, JSON.stringify(valor), por]);
+}
+const semSenha = (lista) => (Array.isArray(lista) ? lista.map(({ senha, ...r }) => r) : lista);
+const RH_ROTULO = { unificarh_usuarios: 'acessos do portal', unificarh_docs: 'documentos', unificarh_avisos: 'avisos',
+  unificarh_solicitacoes: 'solicitações', unificarh_atestados: 'atestados', unificarh_painel: 'cadastros' };
+
+// Senha do portal só aparece para quem edita o RH.
+app.get('/api/rh/store', permMin('rh', 'ver'), async (req, res) => {
+  const edit = req.perms.rh === 'editar';
+  const { rows } = await pool.query('SELECT chave, valor FROM dre.rh_store WHERE chave = ANY($1)', [RH_KEYS]);
+  const itens = {};
+  rows.forEach(r => { itens[r.chave] = r.valor; });
+  if (!edit) {
+    if (itens.unificarh_usuarios) itens.unificarh_usuarios = semSenha(itens.unificarh_usuarios);
+    if (itens.unificarh_painel && itens.unificarh_painel.colaboradores) {
+      itens.unificarh_painel = { ...itens.unificarh_painel, colaboradores: semSenha(itens.unificarh_painel.colaboradores) };
+    }
+  }
+  res.json({ itens, edit, email: req.user.email });
+});
+app.put('/api/rh/store/:chave', permMin('rh', 'editar'), async (req, res) => {
+  const chave = req.params.chave;
+  if (!RH_KEYS.includes(chave)) return res.status(400).json({ erro: 'coleção inválida' });
+  let valor = req.body ? req.body.valor : undefined;
+  if (valor === undefined || valor === null) return res.status(400).json({ erro: 'valor obrigatório' });
+  // Solicitações também chegam pelo portal: não perde as que entraram depois que o painel abriu.
+  if (chave === 'unificarh_solicitacoes' && Array.isArray(valor)) {
+    const atual = await rhLer(chave, []);
+    const ids = new Set(valor.map(x => x && x.id));
+    const novas = (Array.isArray(atual) ? atual : []).filter(x => x && x.id && !ids.has(x.id));
+    valor = novas.concat(valor);
+  }
+  await rhGravar(chave, valor, req.user.email);
+  await logAudit(req.user.id, 'Atualizou RH', RH_ROTULO[chave] + (Array.isArray(valor) ? ` · ${valor.length} registro(s)` : ''));
+  res.json({ ok: true });
+});
+
+// Portal do Colaborador: login do Sistema Grupo Azul. O colaborador é achado pelo e-mail do cadastro no RH.
+async function portalAuth(req, res, next) {
+  let payload;
+  try { payload = jwt.verify((req.headers.authorization || '').replace('Bearer ', ''), JWT_SECRET); }
+  catch (e) { return res.status(401).json({ erro: 'Sessão expirada. Entre novamente no Sistema Grupo Azul.' }); }
+  if (payload.tipo) return res.status(401).json({ erro: 'Sessão inválida.' });
+  try {
+    const { rows } = await pool.query('SELECT email FROM dre.usuarios WHERE id=$1', [payload.id]);
+    if (!rows[0]) return res.status(401).json({ erro: 'Usuário não encontrado.' });
+    const email = String(rows[0].email).trim().toLowerCase();
+    const lista = await rhLer('unificarh_usuarios', []);
+    const u = (Array.isArray(lista) ? lista : []).find(x => String((x.dados && x.dados.email) || x.email || '').trim().toLowerCase() === email);
+    if (!u) return res.status(404).json({ erro: 'Seu e-mail (' + email + ') não está no cadastro de colaboradores. Peça ao RH para incluí-lo na sua ficha.' });
+    if (u.status === 'Desligado') return res.status(403).json({ erro: 'Acesso desativado. Procure o RH.' });
+    const { senha, ...pub } = u;
+    req.colab = pub;
+    next();
+  } catch (e) { next(e); }
+}
+app.get('/api/rh-portal/dados', portalAuth, async (req, res) => {
+  const c = req.colab;
+  const doMeu = (x) => x && x.matricula === c.matricula;
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  const [docs, avisos, atestados, solicitacoes] = await Promise.all(
+    ['unificarh_docs', 'unificarh_avisos', 'unificarh_atestados', 'unificarh_solicitacoes'].map(k => rhLer(k, [])));
+  res.json({
+    usuario: c,
+    docs: arr(docs).filter(d => doMeu(d) && (!d.empresa || d.empresa === c.empresa)),
+    avisos: arr(avisos),
+    atestados: arr(atestados).filter(doMeu),
+    solicitacoes: arr(solicitacoes).filter(doMeu),
+  });
+});
+app.post('/api/rh-portal/solicitacoes', portalAuth, async (req, res) => {
+  const c = req.colab;
+  const it = (req.body && req.body.item) || {};
+  if (!String(it.texto || '').trim()) return res.status(400).json({ erro: 'texto obrigatório' });
+  const item = { ...it, id: it.id || ('sol-' + Date.now()), colab: c.nome, matricula: c.matricula, empresa: c.empresa, status: 'Pendente' };
+  const upd = await pool.query(
+    `UPDATE dre.rh_store SET valor = jsonb_build_array($1::jsonb) || valor, atualizado_em=now(), atualizado_por=$2
+     WHERE chave='unificarh_solicitacoes'`, [JSON.stringify(item), 'portal:' + c.usuario]);
+  if (!upd.rowCount) await rhGravar('unificarh_solicitacoes', [item], 'portal:' + c.usuario);
+  res.json({ ok: true, id: item.id });
+});
+
+// Erros que o navegador relata (tela quebrada, falha de API). Sem login, corpo pequeno e limite por IP.
+const _cliLog = new Map();
+app.post('/api/logs/cliente', express.json({ limit: '8kb', type: ['application/json', 'text/plain'] }), (req, res) => {
+  const ip = req.ip, agora = Date.now();
+  const n = (_cliLog.get(ip) || []).filter(t => agora - t < 60000);
+  if (n.length >= 20) return res.status(429).end();
+  n.push(agora); _cliLog.set(ip, n);
+  if (_cliLog.size > 5000) _cliLog.clear();
+  const b = req.body || {}, cut = (v, m) => String(v == null ? '' : v).slice(0, m);
+  logger.warn('erro no navegador: ' + cut(b.mensagem, 300), {
+    reqId: req.id, tipo: cut(b.tipo, 30), origem: cut(b.origem, 300), linha: Number(b.linha) || undefined,
+    stack: cut(b.stack, 2000), tela: cut(b.tela, 200), usuario: cut(b.usuario, 120), apiRef: cut(b.apiRef, 64), navegador: cut(req.headers['user-agent'], 200),
+  });
+  res.status(204).end();
+});
+
+// Erro não tratado: vai para o log com o id da requisição, que também volta ao navegador.
+app.use((err, req, res, next) => {
+  (req.log || logger).error('erro não tratado: ' + ((err && err.message) || err), {
+    metodo: req.method, url: req.originalUrl, usuario: req.user && req.user.email, stack: err && err.stack,
+  });
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: (err && err.message) || 'erro interno', ref: req.id });
+});
+
+process.on('unhandledRejection', e => logger.error('promise rejeitada sem tratamento: ' + (e && e.message || e), { stack: e && e.stack }));
+process.on('uncaughtException', e => { logger.error('exceção não tratada: ' + e.message, { stack: e.stack }); process.exit(1); });
+
+app.listen(process.env.PORT || 3001, () => logger.info('DRE Azul backend no ar', { porta: Number(process.env.PORT || 3001) }));
