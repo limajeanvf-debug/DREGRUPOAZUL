@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.log
+modulos/helpdesk-azul/uploads/
+modulos/helpdesk-azul/node_modules/
+.DS_Store
