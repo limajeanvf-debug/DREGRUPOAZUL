@@ -1,0 +1,54 @@
+{
+  "anexos": [
+    {
+      "autor": "JEAN LIMA",
+      "em": "2026-09-29T17:15:00.114Z",
+      "id": "mumxsbn8oejtg",
+      "nome": "WhatsApp Image 2026-09-28 at 19.52.49.jpeg"
+    }
+  ],
+  "atualizadoEm": "2026-09-29T17:18:49.964Z",
+  "autorEmail": "adm@azulviagensrec.com.br",
+  "autorId": "adm_azulviagensrec_com_br",
+  "autorLoja": "Matriz",
+  "autorNome": "JEAN LIMA",
+  "categoria": "Geral",
+  "criadoEm": "2026-09-29T17:14:44.852Z",
+  "descricao": "TESTEQ",
+  "locAereo": "ASZCDS",
+  "locPacote": "AADD221",
+  "mensagens": [
+    {
+      "em": "2026-09-29T17:14:44.852Z",
+      "sistema": true,
+      "texto": "Chamado enviado ao help desk"
+    },
+    {
+      "em": "2026-09-29T17:16:09.477Z",
+      "sistema": true,
+      "texto": "Equipe Help Desk assumiu o chamado"
+    },
+    {
+      "autor": "Equipe Help Desk",
+      "autorId": "suporte_agencia_com",
+      "em": "2026-09-29T17:16:34.890Z",
+      "perfil": "suporte",
+      "texto": "Cliente contactado, aguardando retorno"
+    },
+    {
+      "autor": "Equipe Help Desk",
+      "autorId": "suporte_agencia_com",
+      "em": "2026-09-29T17:18:49.964Z",
+      "perfil": "suporte",
+      "texto": "Finalizado"
+    }
+  ],
+  "numero": "HD-084852",
+  "prazoEm": "2026-09-29T21:14:44.852Z",
+  "prioridade": "Alta",
+  "resolvidoEm": "2026-09-29T17:18:43.434Z",
+  "responsavelId": "suporte_agencia_com",
+  "responsavelNome": "Equipe Help Desk",
+  "status": "Fechado",
+  "titulo": "REACOMODAÇÃO DE CLIENTE"
+}
