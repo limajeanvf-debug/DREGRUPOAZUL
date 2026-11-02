@@ -164,7 +164,7 @@ async function bootstrapSchema() {
   }
 }
 bootstrapSchema().then(bootstrapModulos)
-  .then(() => bootstrapHelpdesk())
+  .then(() => criarHelpdesk ? bootstrapHelpdesk() : null)
   .then(() => comercial.bootstrap())
   .then(() => fatDiario.bootstrap())
   .catch(e => logger.error('módulos (bootstrap) falhou: ' + (e.message)));
@@ -190,8 +190,14 @@ app.get(['/helpdesk', '/helpdesk/', '/helpdesk/index.html'], (req, res, next) =>
   if (!require('fs').existsSync(f)) return res.status(500).send('Help desk: arquivo modulos/helpdesk-azul/public/index.html não foi enviado ao servidor.');
   res.set('Cache-Control', 'no-cache').sendFile(f);
 });
-const criarHelpdesk = require('./modulos/helpdesk-azul');
-app.use('/helpdesk', criarHelpdesk({
+let criarHelpdesk = null;
+try {
+  const hdMod = require('./modulos/helpdesk-azul');
+  criarHelpdesk = typeof hdMod === 'function' ? hdMod : (hdMod && typeof hdMod.criarHelpdesk === 'function' ? hdMod.criarHelpdesk : null);
+  if (!criarHelpdesk) logger.error('help desk: modulos/helpdesk-azul/index.js não exporta criarHelpdesk — confira se o arquivo correto foi enviado.');
+} catch (e) { logger.error('help desk: módulo não carregou: ' + e.message); }
+if (!criarHelpdesk) app.use('/helpdesk', (req, res) => res.status(503).send('Help desk indisponível: a pasta modulos/helpdesk-azul está incompleta no servidor.'));
+else app.use('/helpdesk', criarHelpdesk({
   obterUsuario: async req => {
     const token = (req.headers.authorization || '').replace('Bearer ', '') || String((req.query && req.query.t) || '') || lerCookie(req, 'hd_token');
     if (!token) return null;
