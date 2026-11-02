@@ -1,27 +1,26 @@
 {
-  "name": "dre-azul-backend",
-  "version": "1.1.0",
-  "main": "server.js",
+  "name": "helpdesk-azul-viagens",
+  "version": "1.0.0",
+  "description": "Help Desk da Azul Viagens Shopping Recife — módulo Node.js + PostgreSQL para integrar ao sistema principal",
+  "main": "index.js",
+  "private": true,
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "exemplo": "node exemplo-servidor.js",
+    "db:criar": "node scripts/criar-tabelas.js",
+    "promover-admin": "node scripts/promover-admin.js",
+    "importar": "node scripts/importar-claude.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "jsonwebtoken": "^9.0.2",
-    "morgan": "^1.10.0",
+    "express": "^4.21.2",
     "multer": "^2.0.2",
     "nodemailer": "^6.9.16",
-    "pg": "^8.11.5",
-    "winston": "^3.13.0"
+    "pg": "^8.13.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0"
+    "express-session": "^1.18.1"
   }
 }
