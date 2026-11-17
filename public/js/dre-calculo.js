@@ -13,15 +13,19 @@ function getVal(unit, rowId, year, month){
   const y = unit.values[rowId];
   return y ? (y[`${year}-${month}`] ?? 0) : 0;
 }
+// Meses decorridos desde o início da dívida até a competência (negativo = ainda não existia).
+function debtMeses(debt, year, month){
+  return (Number(year)-Number(debt.anoInicial))*12 + (Number(month)-Number(debt.mesInicial));
+}
+// A dívida pertence só à competência em que foi lançada (mês/ano de início).
+function debtAtiva(debt, year, month){ return debtMeses(debt, year, month) === 0; }
 function computeDebtAccumulated(debt, year, month){
-  let months = (year-debt.anoInicial)*12 + (month-debt.mesInicial);
-  if(months<0) months=0;
-  return debt.valorInicial * (1 + (debt.jurosMensal/100)*months);
+  if(!debtAtiva(debt, year, month)) return 0;
+  return Number(debt.valorInicial) * (1 + Number(debt.jurosMensal)/100);
 }
 function debtMonthlyInterest(debt, year, month){
-  let months = (year-debt.anoInicial)*12 + (month-debt.mesInicial);
-  if(months<0) return 0;
-  return debt.valorInicial * (debt.jurosMensal/100);
+  if(!debtAtiva(debt, year, month)) return 0;
+  return Number(debt.valorInicial) * (Number(debt.jurosMensal)/100);
 }
 function totalDebts(debts, year, month){
   return debts.reduce((s,d)=>s+computeDebtAccumulated(d,year,month), 0);
