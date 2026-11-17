@@ -36,7 +36,7 @@ async function pdfLinhas(bytes){
   const out = [];
   for(let p=1;p<=doc.numPages;p++){
     const tc = await (await doc.getPage(p)).getTextContent();
-    const its = tc.items.filter(i=>i.str && i.str.trim()).map(i=>({s:i.str.trim(), x:i.transform[4], y:i.transform[5]}));
+    const its = tc.items.filter(i=>i.str && i.str.trim()).map(i=>({s:i.str.trim(), x:i.transform[4], y:i.transform[5], p}));
     const ls = [];
     its.forEach(i=>{ const l = ls.find(l=>Math.abs(l.y-i.y)<=0.3); if(l) l.t.push(i); else ls.push({y:i.y, t:[i]}); });
     ls.sort((a,b)=>b.y-a.y).forEach(l=>{ l.t.sort((a,b)=>a.x-b.x); out.push(l.t); });
@@ -69,17 +69,21 @@ function pdfFaturaAzulViagens(L){
   const its = [].concat(...L);
   const achar = re=>{ const l = L.find(t=>t.some(i=>re.test(i.s))); if(!l) return ""; const k = l.findIndex(i=>re.test(i.s)); return l.slice(k+1).map(i=>i.s).join(" "); };
   const fatura = achar(/^N[º°o] ?Fatura:?$/i), lote = achar(/^Lote:?$/i);
+  // Cada página tem suas próprias coordenadas: o cabeçalho e o localizador são procurados só na página da linha.
   const hdr = L.find(t=>t.some(i=>i.s==="Booking"));
   const xBook = hdr ? hdr.find(i=>i.s==="Booking").x : 42, xPax = xBook + 26;
-  const yHdr = hdr ? hdr[0].y : 1e9;
+  const yHdrPag = {};
+  L.forEach(t=>{ if(t.some(i=>i.s==="Booking")) yHdrPag[t[0].p] = t[0].y; });
   const cab = ["Booking","Passageiro","Dt venda","Dt pagto.","Forma de pagamento","Valor pagto.","RAV","RAV adicional","Valor pagar/receber","Nº fatura","Lote"];
   const linhas = [];
   L.forEach(t=>{
-    if(t[0].y>=yHdr) return;
+    const pag = t[0].p;
+    if(yHdrPag[pag]!=null && t[0].y>=yHdrPag[pag]) return;
     const datas = t.filter(i=>/^\d{2}\/\d{2}\/\d{4}$/.test(i.s));
     if(datas.length<2) return;
+    if(/Per[ií]odo/i.test(t.map(i=>i.s).join(" "))) return;
     const y = datas[0].y;
-    const book = its.filter(i=>i.x < xPax && Math.abs(i.y-y)<=9 && /^[A-Z0-9]{1,8}$/.test(i.s)).sort((a,b)=>b.y-a.y).map(i=>i.s).join("");
+    const book = its.filter(i=>i.p===pag && i.x < xPax && Math.abs(i.y-y)<=9 && /^[A-Z0-9]{1,8}$/.test(i.s)).sort((a,b)=>b.y-a.y).map(i=>i.s).join("");
     const pax = t.filter(i=>i.x>=xPax && i.x<datas[0].x-2).map(i=>i.s).join(" ");
     const dx = datas[1].x;
     const resto = t.filter(i=>i.x>dx+8);
