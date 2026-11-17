@@ -160,6 +160,45 @@ function pdfFaturaSalinas(L){
   fechar();
   return {cab, linhas};
 }
+// Relatório "CONFERÊNCIA" do sistema interno (Venda Nº / Data / Filial / Cia / Localizador / Total / Fornecedor).
+// Cada venda é uma linha; Cia, Localizador, Total e Fornecedor podem quebrar numa linha logo abaixo (≈8 pt).
+// Sem este leitor, o Localizador saía colado ao Total ("13FXL6 3.423,95") e nunca casava com a fatura.
+function pdfRelConferencia(L){
+  const cab = ["Venda Nº","Data venda","Filial","Cia","Localizador","Total","Fornecedor"];
+  const pos = {};
+  L.forEach(t=>{
+    const p = t[0].p; if(pos[p]) return;
+    const loc = t.find(i=>/^Localizador/i.test(i.s));
+    if(!loc) return;
+    const x = s=>{ const it = t.find(i=>i.s.toLowerCase().startsWith(s)); return it ? it.x : null; };
+    pos[p] = {y:t[0].y, data:x("data"), filial:x("filial"), cia:x("cia"), loc:loc.x, forn:x("cod")};
+  });
+  const pad = Object.values(pos)[0];
+  if(!pad || pad.data==null || pad.filial==null || pad.cia==null || pad.forn==null) return null;
+  const linhas = []; let ult = null;
+  L.forEach(t=>{
+    const p = t[0].p, P = pos[p] || pad;
+    if(pos[p] && t[0].y >= pos[p].y - 1) return;
+    const vistos = new Set(), its = t.filter(i=>{ const k = i.s+"|"+Math.round(i.x); if(vistos.has(k)) return false; vistos.add(k); return true; });
+    const col = x=> x < P.data-2 ? 0 : x < P.filial-2 ? 1 : x < P.cia-2 ? 2 : x < P.loc-2 ? 3 : x < P.loc+40 ? 4 : x < P.forn-2 ? 5 : 6;
+    const cel = [[],[],[],[],[],[],[]];
+    its.forEach(i=>cel[col(i.x)].push(i.s));
+    const ehVenda = cel[0].length===1 && /^\d+$/.test(cel[0][0]) && cel[1].some(s=>/^\d{2}\/\d{2}\/\d{2,4}$/.test(s));
+    if(ehVenda){
+      ult = {p, y:t[0].y, c:cel.map(c=>c.slice())};
+      linhas.push(ult);
+    } else if(ult && ult.p===p && ult.y - t[0].y > 0 && ult.y - t[0].y < 8.95 && !cel[0].length && !cel[1].length){
+      cel.forEach((v,j)=>{ if(v.length) ult.c[j].push(...v); });
+    } else ult = null;
+  });
+  const junto = new Set([4,5]);
+  const rows = linhas.map(l=>l.c.map((v,j)=>{
+    const s = v.join(junto.has(j) ? "" : " ").trim();
+    if(j===5){ const n = pdfNum(s); return n===null ? s : n; }
+    return s;
+  }));
+  return {cab, linhas:rows};
+}
 // Relatório em tabela (ex.: conferência do sistema): colunas pela posição do cabeçalho.
 function pdfTabela(L){
   const h = L.findIndex(t=>t.length>=3 && t.filter(i=>/[A-Za-zÀ-ú]{2}/.test(i.s) && pdfNum(i.s)===null).length>=3);
@@ -187,7 +226,8 @@ async function lerPdf(file){
   const r = (/SALINAS TOUR/i.test(txt) && /\bSeq\b/.test(txt)) ? pdfFaturaSalinas(L)
     : (/Bilhete - Passageiro/.test(txt) && /SKYPLUS|SkyTeam/i.test(txt)) ? pdfFaturaSkyteam(L)
     : (/Booking/.test(txt) && /\bRAV\b/.test(txt)) ? pdfFaturaAzulViagens(L)
-    : (/Factura N|Fatura N/i.test(txt) && /RLOC/.test(txt)) ? pdfFaturaAzul(L) : pdfTabela(L);
+    : (/Factura N|Fatura N/i.test(txt) && /RLOC/.test(txt)) ? pdfFaturaAzul(L)
+    : (/CONFER[ÊE]NCIA/i.test(txt) && /Localizador\/C[óo]d/i.test(txt)) ? (pdfRelConferencia(L) || pdfTabela(L)) : pdfTabela(L);
   if(!r || !r.linhas.length) throw new Error("Não encontrei uma tabela neste PDF. Use a versão em Excel ou CSV.");
   return {nome:file.name, cab:r.cab, linhas:r.linhas};
 }
