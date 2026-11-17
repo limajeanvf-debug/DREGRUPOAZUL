@@ -1,0 +1,125 @@
+{
+  "anexos": [
+    {
+      "autor": "JEAN LIMA",
+      "em": "2026-09-29T20:04:49.309Z",
+      "id": "mun3v0ozuii0z",
+      "nome": "comprovante-394d9071-0fa4-4c29-9fc9-21f5d28a1f37-20260928-165635.png"
+    }
+  ],
+  "atualizadoEm": "2026-09-29T20:09:54.369Z",
+  "autorEmail": "adm@azulviagensrec.com.br",
+  "autorId": "adm_azulviagensrec_com_br",
+  "autorLoja": "Matriz",
+  "autorNome": "JEAN LIMA",
+  "categoria": "Geral",
+  "criadoEm": "2026-09-29T20:04:48.323Z",
+  "descricao": "CLIENTE PRECISA SER CONTACTADO DE REACOMODAÇÃO",
+  "locAereo": "ASX251D",
+  "locPacote": "ADX2514D",
+  "mensagens": [
+    {
+      "em": "2026-09-29T20:04:48.323Z",
+      "sistema": true,
+      "texto": "Chamado enviado ao help desk"
+    },
+    {
+      "autor": "Equipe Help Desk",
+      "autorId": "suporte_agencia_com",
+      "em": "2026-09-29T20:07:20.289Z",
+      "perfil": "suporte",
+      "texto": "CLIENTE CONTACTADO - AGUARDANDO RESPOSTA"
+    },
+    {
+      "autor": "JEAN LIMA",
+      "autorId": "adm_azulviagensrec_com_br",
+      "em": "2026-09-29T20:07:39.258Z",
+      "perfil": "agente",
+      "texto": "oK"
+    },
+    {
+      "autor": "JEAN LIMA",
+      "autorId": "adm_azulviagensrec_com_br",
+      "em": "2026-09-29T20:07:50.434Z",
+      "perfil": "agente",
+      "texto": "OK"
+    },
+    {
+      "autor": "JEAN LIMA",
+      "autorId": "adm_azulviagensrec_com_br",
+      "em": "2026-09-29T20:08:10.596Z",
+      "perfil": "agente",
+      "texto": "OIK"
+    },
+    {
+      "em": "2026-09-29T20:08:30.750Z",
+      "sistema": true,
+      "texto": "Equipe Help Desk alterou o status para \"Resolvido\""
+    },
+    {
+      "em": "2026-09-29T20:08:37.667Z",
+      "sistema": true,
+      "texto": "Equipe Help Desk assumiu o chamado"
+    },
+    {
+      "em": "2026-09-29T20:08:42.569Z",
+      "sistema": true,
+      "texto": "Equipe Help Desk alterou o status para \"Fechado\""
+    },
+    {
+      "em": "2026-09-29T20:08:48.833Z",
+      "sistema": true,
+      "texto": "Equipe Help Desk assumiu o chamado"
+    },
+    {
+      "em": "2026-09-29T20:09:00.358Z",
+      "sistema": true,
+      "texto": "Equipe Help Desk assumiu o chamado"
+    },
+    {
+      "em": "2026-09-29T20:09:01.261Z",
+      "sistema": true,
+      "texto": "Equipe Help Desk assumiu o chamado"
+    },
+    {
+      "em": "2026-09-29T20:09:33.053Z",
+      "sistema": true,
+      "texto": "Equipe Help Desk alterou o status para \"Resolvido\""
+    },
+    {
+      "em": "2026-09-29T20:09:40.336Z",
+      "sistema": true,
+      "texto": "Equipe Help Desk alterou o status para \"Fechado\""
+    },
+    {
+      "em": "2026-09-29T20:09:48.518Z",
+      "sistema": true,
+      "texto": "Equipe Help Desk assumiu o chamado"
+    },
+    {
+      "em": "2026-09-29T20:09:48.981Z",
+      "sistema": true,
+      "texto": "Equipe Help Desk assumiu o chamado"
+    },
+    {
+      "em": "2026-09-29T20:09:49.153Z",
+      "sistema": true,
+      "texto": "Equipe Help Desk assumiu o chamado"
+    },
+    {
+      "autor": "Equipe Help Desk",
+      "autorId": "suporte_agencia_com",
+      "em": "2026-09-29T20:09:54.369Z",
+      "perfil": "suporte",
+      "texto": "OK"
+    }
+  ],
+  "numero": "HD-288323",
+  "prazoEm": "2026-09-30T00:04:48.323Z",
+  "prioridade": "Alta",
+  "resolvidoEm": "2026-09-29T20:09:40.336Z",
+  "responsavelId": "suporte_agencia_com",
+  "responsavelNome": "Equipe Help Desk",
+  "status": "Em andamento",
+  "titulo": "REACOMODAÇÃO DE CLIENTE"
+}

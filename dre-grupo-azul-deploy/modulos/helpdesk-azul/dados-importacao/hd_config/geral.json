@@ -1,0 +1,20 @@
+{
+  "categorias": [
+    "REACOMODAÇÃO",
+    "NOMINAR GRUPO",
+    "ALTERAÇÃO DE POUSADA/HOTEL",
+    "CANCELAMENTO COM CRÉDITO",
+    "CANCELAMENTO COM REEBOLSO"
+  ],
+  "emailHelpdesk": "helpdesk@sonhoazulviagens.com.br",
+  "lojas": [
+    "Shopping Recife"
+  ],
+  "sla": {
+    "Alta": 48,
+    "Baixa": 72,
+    "Média": 36,
+    "Urgente": 24
+  },
+  "telHelpdesk": "81996917074"
+}
