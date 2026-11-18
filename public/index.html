@@ -7,6 +7,7 @@
 <script src="js/constantes.js"></script>
 <script src="js/util.js"></script>
 <script src="js/conferencia-fatura.js"></script>
+<script src="js/conferencia-cartao.js"></script>
 <script src="js/importacao.js"></script>
 <script src="js/modulos.js"></script>
 <script src="js/competencia.js"></script>
@@ -393,7 +394,7 @@
       <sc-if value="{{ isPassivoTab }}" hint-placeholder-val="{{ false }}">
         <div style="background:#fff;border:1px solid #E3E8F3;border-radius:14px;box-shadow:0 1px 3px rgba(16,24,40,.06);overflow:hidden;padding:18px 22px;">
           <div style="font-size:15px;font-weight:700;margin-bottom:2px;">Passivo — Dívidas do Grupo</div>
-          <div style="font-size:12px;color:#8A94A6;margin-bottom:14px;">Correção linear (juros simples) sobre a dívida inicial de cada credor até {{ monthYearLabel }}.</div>
+          <div style="font-size:12px;color:#8A94A6;margin-bottom:14px;">Dívidas lançadas na competência {{ monthYearLabel }}, com juros simples do mês sobre a dívida inicial. Cada dívida aparece só na competência em que foi lançada.</div>
           <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;">
             <div style="flex:1;min-width:160px;background:#F7F9FC;border-radius:10px;padding:12px 16px;">
               <div style="font-size:11px;color:#8A94A6;text-transform:uppercase;font-weight:700;">Total Dívida Inicial</div>
@@ -698,6 +699,7 @@
             </div>
             <div style="font-size:12.5px;color:#667085;line-height:1.5;max-width:760px;text-wrap:pretty;">{{ confDesc }}</div>
           </div>
+          <sc-if value="{{ confGenerico }}" hint-placeholder-val="{{ true }}">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;">
             <sc-for list="{{ confArquivos }}" as="a" hint-placeholder-count="2">
               <div style="border:1px solid {{ a.borda }};background:{{ a.fundo }};border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0;">
@@ -776,6 +778,118 @@
             </div>
             <sc-if value="{{ confTemMais }}" hint-placeholder-val="{{ false }}">
               <button sc-camel-on-click="{{ confMais }}" style="align-self:center;background:#fff;border:1px solid #D8DFEE;color:#1D4ED8;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Mostrar mais linhas ({{ confRestantes }} restantes)</button>
+            </sc-if>
+          </sc-if>
+          </sc-if>
+          <sc-if value="{{ isCartao }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;">
+              <sc-for list="{{ ccCaixas }}" as="cx" hint-placeholder-count="2">
+                <div style="border:1px solid {{ cx.borda }};background:{{ cx.fundo }};border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0;">
+                  <div style="font-size:11.5px;font-weight:800;color:#1D4ED8;text-transform:uppercase;letter-spacing:.05em;">{{ cx.titulo }}</div>
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <label style="background:#fff;border:1px solid #D8DFEE;color:#374151;padding:8px 13px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;">Escolher arquivo<input type="file" accept=".pdf,application/pdf" multiple="{{ cx.multiplo }}" sc-camel-on-change="{{ cx.onArquivo }}" style="display:none;"></label>
+                    <span style="font-size:13px;color:#111827;font-weight:600;overflow-wrap:anywhere;">{{ cx.resumo }}</span>
+                  </div>
+                  <sc-for list="{{ cx.arquivos }}" as="f" hint-placeholder-count="1">
+                    <div style="border:1px solid #E3E8F3;border-radius:10px;padding:10px 12px;background:#F8FAFD;display:flex;flex-direction:column;gap:6px;">
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:#111827;overflow-wrap:anywhere;">{{ f.nome }}</span>
+                        <span style="font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;background:{{ f.tagBg }};color:{{ f.tagFg }};white-space:nowrap;">{{ f.tag }}</span>
+                        <button sc-camel-on-click="{{ f.onRemover }}" aria-label="Remover arquivo {{ f.nome }}" title="Remover" style="border:none;background:none;color:#667085;font-size:17px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:6px;">×</button>
+                      </div>
+                      <sc-if value="{{ f.pedeSenha }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;flex-direction:column;gap:6px;">
+                          <label for="{{ f.idSenha }}" style="font-size:12px;color:#667085;">Senha do PDF</label>
+                          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <div style="flex:1 1 160px;display:flex;border:1px solid {{ f.bordaSenha }};border-radius:8px;background:#fff;overflow:hidden;">
+                              <input id="{{ f.idSenha }}" type="{{ f.tipoSenha }}" value="{{ f.senha }}" sc-camel-on-change="{{ f.onSenha }}" sc-camel-on-key-down="{{ f.onSenhaKey }}" autocomplete="off" placeholder="Digite a senha" style="flex:1;min-width:0;border:none;outline:none;padding:7px 10px;font-size:13px;background:transparent;">
+                              <button sc-camel-on-click="{{ f.onOlho }}" aria-label="{{ f.olhoAria }}" style="border:none;border-left:1px solid #E3E8F3;background:none;color:#667085;padding:0 10px;font-size:12px;cursor:pointer;">{{ f.olho }}</button>
+                            </div>
+                            <button sc-camel-on-click="{{ f.onDesbloquear }}" style="background:#fff;border:1px solid #D8DFEE;color:#374151;padding:7px 13px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Desbloquear</button>
+                          </div>
+                        </div>
+                      </sc-if>
+                      <div style="font-size:12px;color:{{ f.msgCor }};">{{ f.msg }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <sc-if value="{{ ccPodeProcessar }}" hint-placeholder-val="{{ false }}">
+                <button sc-camel-on-click="{{ ccProcessar }}" style="background:#1D4ED8;border:none;color:#fff;padding:10px 22px;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;" style-hover="background:#1E40AF;">{{ ccBtnLabel }}</button>
+              </sc-if>
+              <sc-if value="{{ ccNaoPode }}" hint-placeholder-val="{{ true }}">
+                <button disabled="" style="background:#E5E9F2;border:none;color:#98A2B3;padding:10px 22px;border-radius:8px;font-size:13.5px;font-weight:700;cursor:not-allowed;">Processar</button>
+              </sc-if>
+              <span style="font-size:12.5px;color:#667085;">{{ ccDica }}</span>
+            </div>
+            <details style="font-size:12.5px;color:#667085;">
+              <summary style="cursor:pointer;">Palavras que identificam fornecedores de viagem</summary>
+              <textarea value="{{ ccKw }}" sc-camel-on-change="{{ onCcKw }}" spellcheck="false" aria-label="Palavras de fornecedores de viagem, separadas por vírgula" style="width:100%;box-sizing:border-box;margin-top:8px;min-height:76px;border:1px solid #D8DFEE;border-radius:8px;padding:8px;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#374151;"></textarea>
+              <div style="margin-top:6px;">Lançamentos sem localizador só aparecem como “Sem localizador” se tiverem uma destas palavras. Os demais ficam em “Não é viagem”. Vale a partir do próximo Processar.</div>
+            </details>
+            <sc-if value="{{ ccTemErro }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:13px;font-weight:600;color:#B42318;">{{ ccErro }}</div>
+            </sc-if>
+            <sc-if value="{{ ccPronto }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;border-top:1px solid #F0F2F7;padding-top:14px;">
+                <div style="font-size:15px;font-weight:700;margin-right:auto;">Resultado</div>
+                <sc-for list="{{ ccNcs }}" as="n" hint-placeholder-count="2">
+                  <div style="display:flex;flex-direction:column;gap:4px;">
+                    <label for="{{ n.id }}" style="font-size:11px;font-weight:800;color:#1D4ED8;text-transform:uppercase;letter-spacing:.05em;">{{ n.label }}</label>
+                    <input id="{{ n.id }}" type="text" value="{{ n.valor }}" sc-camel-on-change="{{ n.onChange }}" autocomplete="off" placeholder="Digite a NC" style="width:140px;box-sizing:border-box;padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;">
+                  </div>
+                </sc-for>
+                <button sc-camel-on-click="{{ ccLimpar }}" style="background:#fff;border:1px solid #D8DFEE;color:#374151;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Limpar</button>
+                <button sc-camel-on-click="{{ ccExportar }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;" style-hover="background:#1E40AF;">Exportar Excel</button>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;">
+                <sc-for list="{{ ccChips }}" as="ch" hint-placeholder-count="7">
+                  <button sc-camel-on-click="{{ ch.onClick }}" aria-pressed="{{ ch.ativo }}" style="text-align:left;border:1px solid {{ ch.borda }};background:{{ ch.fundo }};border-radius:11px;padding:9px 12px;cursor:pointer;opacity:{{ ch.opac }};">
+                    <span style="display:flex;align-items:center;gap:7px;font-size:12px;color:#475569;"><span style="width:8px;height:8px;border-radius:50%;flex:none;background:{{ ch.ponto }};"></span>{{ ch.label }}</span>
+                    <span style="display:block;font-size:20px;font-weight:700;color:#111827;font-variant-numeric:tabular-nums;">{{ ch.qtd }}</span>
+                    <span style="display:block;font-size:12px;color:#667085;font-variant-numeric:tabular-nums;">{{ ch.valor }}</span>
+                  </button>
+                </sc-for>
+              </div>
+              <div style="font-size:12.5px;color:#667085;">{{ ccContagem }}</div>
+              <div style="border:1px solid #E3E8F3;border-radius:12px;overflow:auto;max-height:640px;">
+                <table style="border-collapse:collapse;width:100%;font-size:12.5px;">
+                  <thead>
+                    <tr>
+                      <sc-for list="{{ ccCab }}" as="h" hint-placeholder-count="12">
+                        <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;text-align:{{ h.alinha }};padding:9px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;">{{ h.t }}</th>
+                      </sc-for>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <sc-for list="{{ ccLinhas }}" as="r" hint-placeholder-count="6">
+                      <tr>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#374151;white-space:nowrap;">{{ r.cartao }}</td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#374151;white-space:nowrap;">{{ r.data }}</td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#111827;min-width:180px;">{{ r.desc }}</td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#374151;white-space:nowrap;font-variant-numeric:tabular-nums;">{{ r.parcela }}</td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#111827;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">{{ r.valor }}</td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#374151;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">{{ r.totCartao }}</td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#374151;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">{{ r.totVenda }}</td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:{{ r.difCor }};font-weight:600;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">{{ r.dif }}</td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;"><span style="font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;background:{{ r.stBg }};color:{{ r.stFg }};">{{ r.situacao }}</span></td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#111827;font-weight:700;white-space:nowrap;">{{ r.venda }}</td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#111827;white-space:nowrap;">{{ r.filial }}</td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#475569;min-width:260px;line-height:1.4;">{{ r.nota }}</td>
+                      </tr>
+                    </sc-for>
+                  </tbody>
+                </table>
+                <sc-if value="{{ ccVazio }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:18px;text-align:center;font-size:13px;color:#667085;">Nenhum lançamento nos filtros selecionados.</div>
+                </sc-if>
+              </div>
+              <sc-if value="{{ ccTemMais }}" hint-placeholder-val="{{ false }}">
+                <button sc-camel-on-click="{{ ccMais }}" style="align-self:center;background:#fff;border:1px solid #D8DFEE;color:#1D4ED8;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Mostrar mais linhas ({{ ccRestantes }} restantes)</button>
+              </sc-if>
+              <div style="font-size:12px;color:#667085;line-height:1.5;max-width:860px;text-wrap:pretty;">Como ler: o “Total no cartão” é estimado (parcela × nº de parcelas, ou a soma das parcelas lançadas). Cartão menor que a venda é comum (parte paga de outra forma); só cartão maior vira divergência. Sem localizador, a ligação usa fornecedor, data (a do Itaú é a da compra; a do Nubank é a da parcela) e valor, e só vira Provável quando um único resultado bate. As demais ficam como sugestão para você decidir.</div>
             </sc-if>
           </sc-if>
           </div>
@@ -2435,7 +2549,7 @@ class Component extends DCLogic {
   // Competência única: o seletor Mês/Ano do topo e as setas internas das abas ficam sempre no mesmo mês.
   setComp(comp, manterTodas){
     const s = this.state, p = comp.split("-").map(Number);
-    const patch = {month: p[1]-1, year: p[0]};
+    const patch = {month: p[1]-1, year: p[0], newDebtMes: p[1]-1, newDebtAno: p[0]};
     if(!(manterTodas && !s.admComp)) patch.admComp = comp;
     if(!(manterTodas && !s.faturaComp)) patch.faturaComp = comp;
     this.setState(patch);
@@ -3039,7 +3153,7 @@ class Component extends DCLogic {
   }
   buildDebtAoa(year,month){
     return [["Credor","Dívida Inicial","Início","Juros Mensal (%)","Juros a Pagar no Mês","Dívida Atualizada"],
-      ...this.state.debts.map(d=>[d.credor, Math.round(d.valorInicial), `${MESES[d.mesInicial]}/${d.anoInicial}`, d.jurosMensal, Math.round(debtMonthlyInterest(d,year,month)), Math.round(computeDebtAccumulated(d,year,month))])];
+      ...this.state.debts.filter(d=>debtAtiva(d,year,month)).map(d=>[d.credor, Math.round(d.valorInicial), `${MESES[d.mesInicial]}/${d.anoInicial}`, d.jurosMensal, Math.round(debtMonthlyInterest(d,year,month)), Math.round(computeDebtAccumulated(d,year,month))])];
   }
   exportCSV(){
     const {exportYear:year,exportMonth:month,exportScope,exportLoja} = this.state;
@@ -3548,7 +3662,7 @@ class Component extends DCLogic {
   // ---------- Help desk ----------
   carregarHelpdesk(){
     if(!API_BASE_URL || !this.state.session || this.permAba("helpdesk")!=="editar") return;
-    apiFetch("/api/hd/chamados").then(r=>{
+    apiFetch("/api/helpdesk/chamados").then(r=>{
       if(!r) return;
       this.setState({hdNovosN:(r.chamados||[]).filter(c=>c.status==="Aberto").length});
     }).catch(()=>{});
@@ -3862,8 +3976,137 @@ class Component extends DCLogic {
       confStatusBg: tipo.pronto ? "#ECFDF3" : "#F2F4F7", confStatusFg: tipo.pronto ? "#027A48" : "#475467",
       confDesc: tipo.pronto ? tipo.desc : "O layout desta fatura ainda está em preparação. Por enquanto a leitura é genérica: funciona com planilhas (.xlsx, .xls, .csv) e com PDFs em formato de tabela. Envie a fatura (arquivo 1) e o relatório de vendas (arquivo 2), clique em Processar e confira as colunas de ligação.",
     };
+    if(tipo.id==="cartao") return Object.assign({isConf:true, confGenerico:false, isCartao:true}, this.ccVals(s), menu);
     const _r = this.confValsBase(s);
-    return Object.assign(_r, menu);
+    return Object.assign(_r, menu, {confGenerico:true, isCartao:false});
+  }
+  // ---------- Conferência: Faturas Cartão de Crédito (js/conferencia-cartao.js) ----------
+  // A leitura dos PDFs é toda no navegador: faturas e relatório não vão ao servidor.
+  ccAddArquivos(tipo, e){
+    const files = [...((e.target && e.target.files) || [])].filter(f=>/\.pdf$/i.test(f.name) || f.type==="application/pdf");
+    e.target.value = "";
+    if(!files.length) return;
+    this._ccSeq = (this._ccSeq||0);
+    const novos = (tipo==="vendas" ? files.slice(0,1) : files).map(file=>({id:"cc"+(++this._ccSeq), tipo, file, nome:file.name, senha:"", mostrar:false, status:"lendo"}));
+    this.setState(st=>tipo==="vendas" ? {ccVendas:novos[0], ccErro:""} : {ccFaturas:[...(st.ccFaturas||[]), ...novos], ccErro:""});
+    novos.forEach(f=>this.ccAbrir(f.id, f));
+  }
+  ccAchar(id, st){ st = st || this.state; return st.ccVendas && st.ccVendas.id===id ? st.ccVendas : (st.ccFaturas||[]).find(f=>f.id===id); }
+  ccMudar(id, patch){
+    this.setState(st=>{
+      if(st.ccVendas && st.ccVendas.id===id) return {ccVendas:{...st.ccVendas, ...patch}};
+      return {ccFaturas:(st.ccFaturas||[]).map(f=>f.id===id ? {...f, ...patch} : f)};
+    });
+  }
+  async ccAbrir(id, novo){
+    const f = novo || this.ccAchar(id); if(!f) return;
+    this.ccMudar(id, {status:"lendo"});
+    let r;
+    try{
+      if(!window.ConfCartao) throw new Error("O módulo de conferência de cartão não carregou. Recarregue a página.");
+      const pdfjs = await carregarPdfjs();
+      r = await ConfCartao.criarLeitor(pdfjs).abrir(await f.file.arrayBuffer(), f.senha);
+    }catch(err){ r = {ok:false, motivo:"erro", mensagem: /import|fetch|module/i.test(String(err && err.message)) ? "Não foi possível carregar o leitor de PDF. Verifique a conexão com a internet." : (err && err.message) || String(err)}; }
+    if(!this.ccAchar(id)) return; // removido enquanto lia
+    if(r.ok) this.ccMudar(id, {status:"ok", pages:r.pages, numPages:r.numPages, banco: f.tipo==="fatura" ? ConfCartao.detectBank(r.pages) : "", mensagem:""});
+    else this.ccMudar(id, {status:r.motivo, pages:null, mensagem:r.mensagem||""});
+  }
+  ccRemover(id){
+    this.setState(st=>st.ccVendas && st.ccVendas.id===id ? {ccVendas:null} : {ccFaturas:(st.ccFaturas||[]).filter(f=>f.id!==id)});
+  }
+  ccProcessar(){
+    const s = this.state, fat = (s.ccFaturas||[]).filter(f=>f.status==="ok"), v = s.ccVendas;
+    if(!v || v.status!=="ok" || !fat.length) return;
+    try{
+      const res = ConfCartao.processarConferencia({faturas: fat.map(f=>({nome:f.nome, pages:f.pages})), vendasPages: v.pages, palavrasViagem: s.ccKw==null ? ConfCartao.DEFAULT_KW : s.ccKw});
+      this.setState({ccRes:res, ccMostrar:300, ccErro: res.linhas.length ? "" : "Nenhum lançamento encontrado nas faturas. Confira se o PDF é uma fatura de cartão de um dos bancos com layout pronto."});
+    }catch(err){ this.setState({ccRes:null, ccErro:"Não foi possível processar: " + ((err && err.message) || err)}); }
+  }
+  ccFiltroAtual(){ return this.state.ccFiltro || {ok:true, div:true, prov:true, nf:true, semcod:true, estorn:true, ign:false}; }
+  ccExportar(){
+    if(!window.XLSX){ alert("Biblioteca de exportação ainda carregando, tente novamente."); return; }
+    const s = this.state, res = s.ccRes; if(!res) return;
+    const filtro = this.ccFiltroAtual(), sits = Object.keys(filtro).filter(k=>filtro[k]);
+    const nc = {}; Object.keys(s.ccNc||{}).forEach(k=>{ const v = String(s.ccNc[k]||"").trim(); if(v) nc[k] = v; });
+    const aoa = ConfCartao.linhasParaPlanilha(res.linhas, res.indice, nc, sits);
+    const r2 = n=>typeof n==="number" ? Math.round(n*100)/100 : n;
+    aoa.slice(1).forEach(l=>{ [6,7,8,9].forEach(j=>{ l[j] = r2(l[j]); }); });
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [10,10,26,10,34,8,12,16,14,12,22,16,8,70].map(w=>({wch:w}));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Conferência");
+    const ncs = [...new Set(Object.values(nc))];
+    XLSX.writeFile(wb, "conferencia-cartao_" + new Date().toISOString().slice(0,10) + (ncs.length ? "_NC-" + ncs.join("-").replace(/[^\w-]+/g,"_") : "") + ".xlsx");
+  }
+  ccVals(s){
+    const C = window.ConfCartao, fmt = n=>Number(n).toLocaleString("pt-BR",{minimumFractionDigits:2, maximumFractionDigits:2});
+    const TAG = {lendo:["Lendo…","#F2F4F7","#475467","Abrindo o arquivo.","#667085"],
+      precisa_senha:["Protegido","#FAEFD0","#7C5200","Este PDF tem senha. Digite no campo abaixo e clique em Desbloquear.","#667085"],
+      senha_incorreta:["Senha incorreta","#FAE3E0","#A8261E","A senha não abriu o arquivo. Confira e tente de novo.","#B42318"],
+      erro:["Erro","#FAE3E0","#A8261E","Não foi possível ler o arquivo.","#B42318"]};
+    const arq = f=>{
+      const pede = f.status==="precisa_senha" || f.status==="senha_incorreta";
+      const t = f.status==="ok" ? ["Pronto","#E0F2E8","#17693F", f.tipo==="fatura" ? "Cartão detectado: " + (f.banco==="Outro" ? "banco não identificado (layout ainda não configurado; a leitura pode falhar)" : f.banco) + " · " + f.numPages + " página(s)" : "Relatório lido · " + f.numPages + " páginas", "#667085"] : TAG[f.status] || TAG.erro;
+      const desbloquear = ()=>this.ccAbrir(f.id);
+      return {nome:f.nome, tag:t[0], tagBg:t[1], tagFg:t[2], msg: f.status==="erro" && f.mensagem ? f.mensagem : t[3], msgCor:t[4],
+        pedeSenha:pede, idSenha:"senha-"+f.id, senha:f.senha||"", tipoSenha: f.mostrar ? "text" : "password",
+        olho: f.mostrar ? "Ocultar" : "Mostrar", olhoAria: f.mostrar ? "Ocultar senha" : "Mostrar senha",
+        bordaSenha: f.status==="senha_incorreta" ? "#F04438" : "#D8DFEE",
+        onSenha:(e)=>this.ccMudar(f.id, {senha:e.target.value}),
+        onSenhaKey:(e)=>{ if(e.key==="Enter"){ e.preventDefault(); desbloquear(); } },
+        onOlho:()=>this.ccMudar(f.id, {mostrar:!f.mostrar}), onDesbloquear:desbloquear, onRemover:()=>this.ccRemover(f.id)};
+    };
+    const fats = s.ccFaturas||[], v = s.ccVendas;
+    const nF = fats.length;
+    const caixa = (titulo, lista, tipo, resumo)=>({titulo, multiplo: tipo==="fatura", arquivos: lista.map(arq), resumo,
+      borda: lista.length ? "#BFD0FB" : "#E3E8F3", fundo: lista.length ? "#F5F8FF" : "#fff", onArquivo:(e)=>this.ccAddArquivos(tipo, e)});
+    const vOk = !!(v && v.status==="ok"), fOk = fats.filter(f=>f.status==="ok").length;
+    const pend = fats.filter(f=>f.status!=="ok").length + (v && !vOk ? 1 : 0);
+    const lendo = fats.some(f=>f.status==="lendo") || (v && v.status==="lendo");
+    const pode = vOk && fOk>0 && !!C;
+    const dica = !v || !nF ? "Envie os dois arquivos para processar."
+      : lendo ? "Lendo os arquivos…"
+      : !vOk ? "Desbloqueie o relatório de vendas (informe a senha, se pedir)."
+      : !fOk ? "Desbloqueie ao menos uma fatura (informe a senha, se pedir)."
+      : pend ? pend + " arquivo(s) sem leitura serão ignorados."
+      : s.ccRes ? "" : "Tudo pronto para processar.";
+    const out = {ccCaixas:[caixa("Arquivo 1 · Faturas", fats, "fatura", nF===0 ? "Nenhum arquivo escolhido" : nF===1 ? fats[0].nome : nF + " arquivos escolhidos"),
+        caixa("Arquivo 2 · Vendas", v ? [v] : [], "vendas", v ? v.nome : "Nenhum arquivo escolhido")],
+      ccPodeProcessar:pode, ccNaoPode:!pode, ccDica:dica, ccBtnLabel: s.ccRes ? "Processar novamente" : "Processar", ccProcessar:()=>this.ccProcessar(),
+      ccKw: s.ccKw==null ? (C ? C.DEFAULT_KW : "") : s.ccKw, onCcKw:(e)=>this.setState({ccKw:e.target.value}),
+      ccErro: s.ccErro||"", ccTemErro: !!s.ccErro, ccPronto:false};
+    const res = s.ccRes;
+    if(!res || !res.linhas.length || !C) return out;
+    const SIT = C.SITUACOES, ORDEM = ["ok","div","prov","nf","semcod","estorn","ign"];
+    const COR = {ok:["#E0F2E8","#17693F","#17693F"], div:["#FAE3E0","#A8261E","#A8261E"], prov:["#FAEFD0","#7C5200","#C98A00"], nf:["#FAE3E0","#A8261E","#A8261E"],
+      semcod:["#E1EAF4","#2F5278","#2F5278"], estorn:["#EEE4F8","#6A3E9B","#6A3E9B"], ign:["#E9EDF0","#56636D","#8A95A0"]};
+    const filtro = this.ccFiltroAtual(), linhas = res.linhas, ind = res.indice;
+    const qtd = {}, val = {}; ORDEM.forEach(k=>{ qtd[k] = 0; val[k] = 0; });
+    linhas.forEach(r=>{ qtd[r.status]++; val[r.status] += r.valor; });
+    const vis = linhas.filter(r=>filtro[r.status]), lim = s.ccMostrar||300;
+    const arqs = [...new Set(linhas.map(r=>r.arquivo))];
+    const bancoDe = a=>(linhas.find(r=>r.arquivo===a)||{}).cartao||"";
+    const money = n=>(n==null || isNaN(n)) ? "" : fmt(n);
+    const vendaLbl = r=>{ const vs = r.vendas||[]; return vs.slice(0,3).map(x=>{ const sv = ind.byVenda && ind.byVenda.get(x); return x + (sv && sv.data ? " (" + sv.data.slice(0,5) + ")" : ""); }).join(", ") + (vs.length>3 ? " …" : ""); };
+    return Object.assign(out, {ccPronto:true,
+      ccNcs: arqs.map((a,i)=>{ const b = bancoDe(a), rep = arqs.filter(x=>bancoDe(x)===b).length>1;
+        return {id:"cc-nc-"+i, label:"NC · " + (rep || b==="Outro" ? a.replace(/\.pdf$/i,"") : b), valor:(s.ccNc||{})[a]||"",
+          onChange:(e)=>{ const val = e.target.value; this.setState(st=>({ccNc:{...(st.ccNc||{}), [a]:val}})); }}; }),
+      ccLimpar:()=>this.setState({ccFaturas:[], ccVendas:null, ccRes:null, ccNc:{}, ccErro:"", ccMostrar:300}),
+      ccExportar:()=>this.ccExportar(),
+      ccChips: ORDEM.map(k=>({label:SIT[k], qtd:qtd[k], valor:"R$ " + fmt(val[k]), ponto:COR[k][2], ativo:!!filtro[k],
+        borda: filtro[k] ? "#BFD0FB" : "#E3E8F3", fundo: filtro[k] ? "#fff" : "#F8FAFD", opac: filtro[k] ? 1 : .6,
+        onClick:()=>this.setState({ccFiltro:{...filtro, [k]:!filtro[k]}, ccMostrar:300})})),
+      ccContagem: vis.length + " de " + linhas.length + " lançamentos · relatório com " + ind.vendas + " vendas" + (ind.hasTotals===false ? " (sem coluna Total: valores não comparados)" : ""),
+      ccCab: [["Cartão","left"],["Data","left"],["Descrição na fatura","left"],["Parcela","left"],["Valor (R$)","right"],["Total no cartão (est.)","right"],["Total da venda","right"],["Diferença","right"],["Situação","left"],["Venda nº","left"],["Filial","left"],["Observação","left"]].map(([t,alinha])=>({t, alinha})),
+      ccLinhas: vis.slice(0, lim).map(r=>({cartao:r.cartao, data:r.data, desc:r.desc, parcela:r.parcela||"", valor:fmt(r.valor),
+        totCartao: r.first ? money(r.cardTotal||r.estTotal) : "", totVenda: r.first ? money(r.sysTotal) : "",
+        dif: r.diff==null ? "" : (r.diff>0 ? "+" : r.diff<0 ? "−" : "") + fmt(Math.abs(r.diff)),
+        difCor: r.diff>0.1 ? "#A8261E" : "#374151",
+        situacao:SIT[r.status], stBg:COR[r.status][0], stFg:COR[r.status][1],
+        venda: vendaLbl(r) || "—", filial: C.infoVenda(r, ind).filial, nota:r.nota})),
+      ccVazio: !vis.length, ccTemMais: vis.length>lim, ccRestantes: Math.max(0, vis.length-lim), ccMais:()=>this.setState({ccMostrar:lim+300}),
+    });
   }
   confValsBase(s){
     const A = s.confA, B = s.confB;
@@ -4182,7 +4425,7 @@ class Component extends DCLogic {
     if(isBalanco){
       const unit = s.units[s.opIndex];
       const staticPassivo = DETAIL_ROWS.filter(d=>d.cat==="passivo").map(d=>({label:d.label, value:formatBRL(getVal(unit,d.id,s.year,s.month))}));
-      const debtRows = s.debts.map(d=>({label:`${d.credor} (dívida do grupo)`, value:formatBRL(computeDebtAccumulated(d,s.year,s.month))}));
+      const debtRows = s.debts.filter(d=>debtAtiva(d,s.year,s.month)).map(d=>({label:`${d.credor} (dívida do grupo)`, value:formatBRL(computeDebtAccumulated(d,s.year,s.month))}));
       balPassivoRows = [...staticPassivo, ...debtRows];
       const totalPassivo = catSum("passivo", unit, s.year, s.month) + totalDebts(s.debts, s.year, s.month);
       const capitalSocial = unit.capitalSocial||0;
@@ -4200,7 +4443,8 @@ class Component extends DCLogic {
     }
 
     const isPassivoTab = viewEf==="passivo";
-    const debtRows = s.debts.map(d=>({
+    const debtsAtivas = s.debts.filter(d=>debtAtiva(d, s.year, s.month));
+    const debtRows = debtsAtivas.map(d=>({
       id:d.id, credor:d.credor,
       valorInicial:formatBRL(d.valorInicial),
       inicio:`${MESES[d.mesInicial]}/${d.anoInicial}`,
@@ -4209,9 +4453,9 @@ class Component extends DCLogic {
       acumulado:formatBRL(computeDebtAccumulated(d, s.year, s.month)),
       onRemove:()=>this.removeDebt(d.id),
     }));
-    const totalInicial = s.debts.reduce((sum,d)=>sum+d.valorInicial,0);
-    const totalJurosMes = s.debts.reduce((sum,d)=>sum+debtMonthlyInterest(d,s.year,s.month),0);
-    const totalAtualizado = s.debts.reduce((sum,d)=>sum+computeDebtAccumulated(d,s.year,s.month),0);
+    const totalInicial = debtsAtivas.reduce((sum,d)=>sum+Number(d.valorInicial),0);
+    const totalJurosMes = debtsAtivas.reduce((sum,d)=>sum+debtMonthlyInterest(d,s.year,s.month),0);
+    const totalAtualizado = debtsAtivas.reduce((sum,d)=>sum+computeDebtAccumulated(d,s.year,s.month),0);
     const auditRows = s.auditLog.slice(0,50).map(a=>({
       ts:new Date(a.ts).toLocaleString("pt-BR"), user:a.user, action:a.action, detail:a.detail,
     }));
