@@ -844,6 +844,30 @@
                 <button sc-camel-on-click="{{ ccLimpar }}" style="background:#fff;border:1px solid #D8DFEE;color:#374151;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Limpar</button>
                 <button sc-camel-on-click="{{ ccExportar }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;" style-hover="background:#1E40AF;">Exportar Excel</button>
               </div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div style="font-size:13px;font-weight:700;color:#111827;">Resumo por cartão</div>
+                <div style="border:1px solid #E3E8F3;border-radius:12px;overflow:auto;">
+                  <table style="border-collapse:collapse;width:100%;font-size:12.5px;">
+                    <thead>
+                      <tr>
+                        <sc-for list="{{ ccResCab }}" as="h" hint-placeholder-count="12">
+                          <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:{{ h.alinha }};padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;">{{ h.t }}</th>
+                        </sc-for>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <sc-for list="{{ ccResLinhas }}" as="rl" hint-placeholder-count="2">
+                        <tr style="background:{{ rl.bg }};">
+                          <sc-for list="{{ rl.cel }}" as="c" hint-placeholder-count="12">
+                            <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;text-align:{{ c.alinha }};color:{{ c.cor }};font-weight:{{ c.peso }};font-variant-numeric:tabular-nums;">{{ c.t }}</td>
+                          </sc-for>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                </div>
+                <div style="font-size:12px;color:#667085;line-height:1.5;max-width:860px;text-wrap:pretty;">“Leitura” confere se a fatura anterior mais os lançamentos lidos dá o total da fatura, ou seja, se nenhum lançamento ficou de fora. Juros, multas e IOF estão em colunas próprias para comparar os cartões.</div>
+              </div>
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;">
                 <sc-for list="{{ ccChips }}" as="ch" hint-placeholder-count="7">
                   <button sc-camel-on-click="{{ ch.onClick }}" aria-pressed="{{ ch.ativo }}" style="text-align:left;border:1px solid {{ ch.borda }};background:{{ ch.fundo }};border-radius:11px;padding:9px 12px;cursor:pointer;opacity:{{ ch.opac }};">
@@ -870,7 +894,8 @@
                         <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#374151;white-space:nowrap;">{{ r.data }}</td>
                         <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#111827;min-width:180px;">{{ r.desc }}</td>
                         <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#374151;white-space:nowrap;font-variant-numeric:tabular-nums;">{{ r.parcela }}</td>
-                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#111827;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">{{ r.valor }}</td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:{{ r.valorCor }};white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">{{ r.valor }}</td>
+                        <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:{{ r.catCor }};font-weight:{{ r.catPeso }};white-space:nowrap;">{{ r.categoria }}</td>
                         <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#374151;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">{{ r.totCartao }}</td>
                         <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#374151;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">{{ r.totVenda }}</td>
                         <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:{{ r.difCor }};font-weight:600;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">{{ r.dif }}</td>
@@ -1119,6 +1144,24 @@
           <sc-if value="{{ fatTemResumo }}" hint-placeholder-val="{{ false }}">
             <div>
               <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:8px;">Apuração por tipo — {{ fatResumoLabel }}</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px;">
+                <div style="background:#FEF3F2;border:1px solid #FECDCA;border-radius:12px;padding:12px 14px;">
+                  <div style="font-size:11.5px;font-weight:700;color:#B42318;text-transform:uppercase;letter-spacing:.04em;">Total a pagar</div>
+                  <div style="font-size:20px;font-weight:800;color:#B42318;margin-top:4px;font-variant-numeric:tabular-nums;">{{ apurTotPagar }}</div>
+                </div>
+                <div style="background:#F0FDF9;border:1px solid #99F6E4;border-radius:12px;padding:12px 14px;">
+                  <div style="font-size:11.5px;font-weight:700;color:#0F766E;text-transform:uppercase;letter-spacing:.04em;">Total a receber</div>
+                  <div style="font-size:20px;font-weight:800;color:#0F766E;margin-top:4px;font-variant-numeric:tabular-nums;">{{ apurTotReceber }}</div>
+                </div>
+                <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;">
+                  <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Saldo</div>
+                  <div style="font-size:20px;font-weight:800;color:{{ apurSaldoCor }};margin-top:4px;font-variant-numeric:tabular-nums;">{{ apurTotSaldo }}</div>
+                </div>
+                <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;">
+                  <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Conferidas</div>
+                  <div style="font-size:20px;font-weight:800;color:#111827;margin-top:4px;font-variant-numeric:tabular-nums;">{{ apurTotConf }}</div>
+                </div>
+              </div>
               <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr .9fr;gap:10px;padding-bottom:6px;border-bottom:1px solid #E3E8F3;">
                 <div style="font-size:11px;font-weight:700;color:#8A94A6;text-transform:uppercase;">Tipo</div>
                 <div style="font-size:11px;font-weight:700;color:#8A94A6;text-transform:uppercase;text-align:right;">A pagar</div>
@@ -1135,6 +1178,13 @@
                   <div style="font-size:12.5px;text-align:right;color:#6B7280;">{{ r.conf }}</div>
                 </div>
               </sc-for>
+              <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr .9fr;gap:10px;padding:9px 0;border-top:2px solid #E3E8F3;background:#F7F9FC;">
+                <div style="font-size:13px;font-weight:800;color:#111827;padding-left:4px;">Total</div>
+                <div style="font-size:13px;text-align:right;color:#B42318;font-weight:800;font-variant-numeric:tabular-nums;">{{ apurTotPagar }}</div>
+                <div style="font-size:13px;text-align:right;color:#0F766E;font-weight:800;font-variant-numeric:tabular-nums;">{{ apurTotReceber }}</div>
+                <div style="font-size:13px;text-align:right;color:{{ apurSaldoCor }};font-weight:800;font-variant-numeric:tabular-nums;">{{ apurTotSaldo }}</div>
+                <div style="font-size:13px;text-align:right;color:#111827;font-weight:700;padding-right:4px;">{{ apurTotConf }}</div>
+              </div>
             </div>
           </sc-if>
           <sc-if value="{{ apurVazio }}" hint-placeholder-val="{{ false }}">
@@ -4022,7 +4072,7 @@ class Component extends DCLogic {
       this.setState({ccRes:res, ccMostrar:300, ccErro: res.linhas.length ? "" : "Nenhum lançamento encontrado nas faturas. Confira se o PDF é uma fatura de cartão de um dos bancos com layout pronto."});
     }catch(err){ this.setState({ccRes:null, ccErro:"Não foi possível processar: " + ((err && err.message) || err)}); }
   }
-  ccFiltroAtual(){ return this.state.ccFiltro || {ok:true, div:true, prov:true, nf:true, semcod:true, estorn:true, ign:false}; }
+  ccFiltroAtual(){ return this.state.ccFiltro || {ok:true, div:true, prov:true, nf:true, semcod:true, estorn:true, ign:true}; }
   ccExportar(){
     if(!window.XLSX){ alert("Biblioteca de exportação ainda carregando, tente novamente."); return; }
     const s = this.state, res = s.ccRes; if(!res) return;
@@ -4030,11 +4080,15 @@ class Component extends DCLogic {
     const nc = {}; Object.keys(s.ccNc||{}).forEach(k=>{ const v = String(s.ccNc[k]||"").trim(); if(v) nc[k] = v; });
     const aoa = ConfCartao.linhasParaPlanilha(res.linhas, res.indice, nc, sits);
     const r2 = n=>typeof n==="number" ? Math.round(n*100)/100 : n;
-    aoa.slice(1).forEach(l=>{ [6,7,8,9].forEach(j=>{ l[j] = r2(l[j]); }); });
+    aoa.slice(1).forEach(l=>{ [6,8,9,10].forEach(j=>{ l[j] = r2(l[j]); }); });
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws["!cols"] = [10,10,26,10,34,8,12,16,14,12,22,16,8,70].map(w=>({wch:w}));
+    ws["!cols"] = [10,10,26,10,34,8,12,24,16,14,12,22,16,8,70].map(w=>({wch:w}));
+    const res2 = ConfCartao.resumoParaPlanilha(res.faturas||[], nc).map((l,i)=>i ? l.map(r2) : l);
+    const ws2 = XLSX.utils.aoa_to_sheet(res2);
+    ws2["!cols"] = res2[0].map((h,j)=>({wch: j<3 ? 18 : Math.max(12, String(h).length+2)}));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Conferência");
+    XLSX.utils.book_append_sheet(wb, ws, "Lançamentos");
+    XLSX.utils.book_append_sheet(wb, ws2, "Resumo por cartão");
     const ncs = [...new Set(Object.values(nc))];
     XLSX.writeFile(wb, "conferencia-cartao_" + new Date().toISOString().slice(0,10) + (ncs.length ? "_NC-" + ncs.join("-").replace(/[^\w-]+/g,"_") : "") + ".xlsx");
   }
@@ -4087,6 +4141,16 @@ class Component extends DCLogic {
     const arqs = [...new Set(linhas.map(r=>r.arquivo))];
     const bancoDe = a=>(linhas.find(r=>r.arquivo===a)||{}).cartao||"";
     const money = n=>(n==null || isNaN(n)) ? "" : fmt(n);
+    const K = C.CAT_ORDEM, enc = f=>f.cat.juros + f.cat.multa + f.cat.iof;
+    const ccResCab = [["Cartão","left"],["Total da fatura","right"],["Fatura anterior","right"]].concat(K.map(k=>[C.CATEGORIAS[k],"right"]), [["Juros + multas + IOF","right"],["Leitura","left"]]).map(([t,alinha])=>({t, alinha}));
+    const celN = (v, destaque)=>({t: v==null ? "—" : fmt(v), alinha:"right", cor: destaque && v>0.004 ? "#B42318" : v<0 ? "#027A48" : "#374151", peso: destaque && v>0.004 ? "700" : "500"});
+    const rfs = res.faturas || [];
+    const ccResLinhas = rfs.map(f=>({bg:"#fff", cel:[{t: f.cartao + (rfs.filter(x=>x.cartao===f.cartao).length>1 ? " · " + f.nome.replace(/\.pdf$/i,"") : ""), alinha:"left", cor:"#111827", peso:"700"},
+        celN(f.totalPdf), celN(f.anteriorPdf)].concat(K.map(k=>celN(f.cat[k], ["juros","multa","iof"].includes(k))), [celN(enc(f), true),
+        {t:f.leitura, alinha:"left", cor: f.leitura==="Completa" ? "#027A48" : /Diferença/.test(f.leitura) ? "#B42318" : "#667085", peso:"600"}])}));
+    if(rfs.length>1){ const soma = k=>rfs.reduce((a,f)=>a+f.cat[k],0);
+      ccResLinhas.push({bg:"#F8FAFD", cel:[{t:"Total", alinha:"left", cor:"#111827", peso:"800"}, celN(rfs.reduce((a,f)=>a+(f.totalPdf||0),0)), {t:"", alinha:"right", cor:"#374151", peso:"500"}]
+        .concat(K.map(k=>celN(soma(k), ["juros","multa","iof"].includes(k))), [celN(rfs.reduce((a,f)=>a+enc(f),0), true), {t:"", alinha:"left", cor:"#374151", peso:"500"}])}); }
     const vendaLbl = r=>{ const vs = r.vendas||[]; return vs.slice(0,3).map(x=>{ const sv = ind.byVenda && ind.byVenda.get(x); return x + (sv && sv.data ? " (" + sv.data.slice(0,5) + ")" : ""); }).join(", ") + (vs.length>3 ? " …" : ""); };
     return Object.assign(out, {ccPronto:true,
       ccNcs: arqs.map((a,i)=>{ const b = bancoDe(a), rep = arqs.filter(x=>bancoDe(x)===b).length>1;
@@ -4098,8 +4162,11 @@ class Component extends DCLogic {
         borda: filtro[k] ? "#BFD0FB" : "#E3E8F3", fundo: filtro[k] ? "#fff" : "#F8FAFD", opac: filtro[k] ? 1 : .6,
         onClick:()=>this.setState({ccFiltro:{...filtro, [k]:!filtro[k]}, ccMostrar:300})})),
       ccContagem: vis.length + " de " + linhas.length + " lançamentos · relatório com " + ind.vendas + " vendas" + (ind.hasTotals===false ? " (sem coluna Total: valores não comparados)" : ""),
-      ccCab: [["Cartão","left"],["Data","left"],["Descrição na fatura","left"],["Parcela","left"],["Valor (R$)","right"],["Total no cartão (est.)","right"],["Total da venda","right"],["Diferença","right"],["Situação","left"],["Venda nº","left"],["Filial","left"],["Observação","left"]].map(([t,alinha])=>({t, alinha})),
+      ccCab: [["Cartão","left"],["Data","left"],["Descrição na fatura","left"],["Parcela","left"],["Valor (R$)","right"],["Categoria","left"],["Total no cartão (est.)","right"],["Total da venda","right"],["Diferença","right"],["Situação","left"],["Venda nº","left"],["Filial","left"],["Observação","left"]].map(([t,alinha])=>({t, alinha})),
+      ccResCab, ccResLinhas,
       ccLinhas: vis.slice(0, lim).map(r=>({cartao:r.cartao, data:r.data, desc:r.desc, parcela:r.parcela||"", valor:fmt(r.valor),
+        valorCor: r.valor<0 ? "#027A48" : "#111827", categoria: C.CATEGORIAS[r.categoria]||"",
+        catCor: ["juros","multa","iof"].includes(r.categoria) ? "#B42318" : "#475569", catPeso: ["juros","multa","iof"].includes(r.categoria) ? "700" : "500",
         totCartao: r.first ? money(r.cardTotal||r.estTotal) : "", totVenda: r.first ? money(r.sysTotal) : "",
         dif: r.diff==null ? "" : (r.diff>0 ? "+" : r.diff<0 ? "−" : "") + fmt(Math.abs(r.diff)),
         difCor: r.diff>0.1 ? "#A8261E" : "#374151",
@@ -4680,6 +4747,13 @@ class Component extends DCLogic {
         saldo: formatMoeda(receber - pagar),
         conf: itens.filter(f=>f.conferida).length + "/" + itens.length};
     }).filter(r=>r.qtd>0).sort((a,b)=>b.pagarRaw-a.pagarRaw);
+    // Totais da apuração (mesma base das linhas por tipo)
+    const apurItens = fatBase.filter(f=>nomesTipo.includes(f.tipo));
+    const apurPagar = apurItens.filter(f=>f.mov==="pagar").reduce((t,f)=>t+f.valor, 0);
+    const apurReceber = apurItens.filter(f=>f.mov==="receber").reduce((t,f)=>t+f.valor, 0);
+    const apurTotais = {apurTotPagar: formatMoeda(apurPagar), apurTotReceber: formatMoeda(apurReceber),
+      apurTotSaldo: formatMoeda(apurReceber - apurPagar), apurSaldoCor: apurReceber - apurPagar < 0 ? "#B42318" : "#0F766E",
+      apurTotConf: apurItens.filter(f=>f.conferida).length + "/" + apurItens.length};
 
     return {
       showLogin, showDashboard,
@@ -4718,7 +4792,7 @@ class Component extends DCLogic {
       fatTotalPagar: formatMoeda(fatPagar), fatTotalReceber: formatMoeda(fatReceber),
       fatSaldo: formatMoeda(fatReceber - fatPagar),
       fatPendentes, fatVencidas, fatVencidasColor: fatVencidas ? "#B42318" : "#111827",
-      faturaChips, faturaRows, faturaResumoRows,
+      faturaChips, faturaRows, faturaResumoRows, ...apurTotais,
       recTem: recRows.length>0, recRows, recAviso: s.recAviso,
       bancoChips: (s.bancos || []).map(b=>({label: b, onRemove: ()=>this.removeBanco(b)})),
       bancoAviso: s.bancoAviso,
