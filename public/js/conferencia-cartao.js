@@ -52,14 +52,16 @@ function detectBank(pages) {
    sinal: 'normal' (menos = crédito) | 'invertido' (Brasilcard: menos = débito, mais = crédito).
    Créditos sem sinal (C6, Mercado Pago) são reconhecidos pelo texto (pagamento, estorno, reembolso…). */
 const LAYOUTS = {
-  'C6':           { detecta: /BANCO C6 S|C6 Carbon|Cart[aã]o C6/i, split: null, sinal: 'normal' },
-  'Digio':        { detecta: /app do Digio|Cart[aã]o Digio|digio\.com\.br/i, split: null, sinal: 'normal' },
-  'Sicoob':       { detecta: /SICOOB (VISA|MASTERCARD|PERNAMBUCO|CART)|BANCO COOPERATIVO SICOOB/i, split: 0.5, sinal: 'normal', cidade: true, parcelaSolta: true },
-  'Brasilcard':   { detecta: /BRASILCARD INSTITUI/i, split: null, sinal: 'invertido', limpar: d => d.replace(/^\.\s*/, '') },
-  'Riachuelo':    { detecta: /MIDWAY S|Cart[aã]o Riachuelo|ANUIDADE RIACHUELO/i, split: null, sinal: 'normal', parcelaSolta: true, limpar: d => d.replace(/^\d{3}\s+/, '') },
-  'Bradesco':     { detecta: /BANCO BRADESCARD|Bradesco Cart[oõ]es/i, split: 0.5, sinal: 'normal', limpar: d => d.replace(/\s+BRA$/, '') },
-  'PicPay':       { detecta: /aplicativo PicPay|app PicPay|PicPay Bank|Cart[aã]o PicPay/i, split: 0.5, sinal: 'normal' },
-  'Mercado Pago': { detecta: /app (do )?Mercado Pago|Cr[eé]dito Mercado Pago/i, split: null, sinal: 'normal' },
+  // total / anterior: onde ler o total da fatura e o saldo da fatura anterior, para conferir se a leitura está completa
+  // (anterior + soma dos lançamentos = total). O C6 lista também os pagamentos da fatura anterior, então não confere assim.
+  'C6':           { detecta: /BANCO C6 S|C6 Carbon|Cart[aã]o C6/i, split: null, sinal: 'normal', total: /Total a pagar\s*R\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/, anterior: null },
+  'Digio':        { detecta: /app do Digio|Cart[aã]o Digio|digio\.com\.br/i, split: null, sinal: 'normal', total: /Valor da fatura:\s*R\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/ },
+  'Sicoob':       { detecta: /SICOOB (VISA|MASTERCARD|PERNAMBUCO|CART)|BANCO COOPERATIVO SICOOB/i, split: 0.5, sinal: 'normal', cidade: true, parcelaSolta: true, total: /no valor total de R\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/ },
+  'Brasilcard':   { detecta: /BRASILCARD INSTITUI/i, split: null, sinal: 'invertido', limpar: d => d.replace(/^\.\s*/, ''), total: /Fatura de [A-Za-zç]+:\s*R\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/ },
+  'Riachuelo':    { detecta: /MIDWAY S|Cart[aã]o Riachuelo|ANUIDADE RIACHUELO/i, split: null, sinal: 'normal', parcelaSolta: true, limpar: d => d.replace(/^\d{3}\s+/, ''), total: /Saldo desta Fatura\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/ },
+  'Bradesco':     { detecta: /BANCO BRADESCARD|Bradesco Cart[oõ]es/i, split: 0.5, sinal: 'normal', limpar: d => d.replace(/\s+BRA$/, ''), total: /Total da fatura\s*R\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/ },
+  'PicPay':       { detecta: /aplicativo PicPay|app PicPay|PicPay Bank|Cart[aã]o PicPay/i, split: 0.5, sinal: 'normal', total: /Total da fatura\s*R\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/ },
+  'Mercado Pago': { detecta: /app (do )?Mercado Pago|Cr[eé]dito Mercado Pago/i, split: null, sinal: 'normal', total: /Total a pagar\s*R\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/, anterior: /Total da fatura de [A-Za-zç]+\s*R\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/ },
 };
 const L_MESES = 'jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez';
 const L_DATA = new RegExp('^(\\d{2}\\/\\d{2}(?:\\/\\d{2,4})?|\\d{2}\\s+(?:' + L_MESES + '))(?=\\s|$)', 'i');
@@ -542,7 +544,7 @@ function processarConferencia({ faturas, vendasPages, palavrasViagem = DEFAULT_K
   const vendas = parseSistema2(vendasPages).sales;
   const S = vendas.length > 10 ? buildIndex(vendas) : Object.assign(parseSistema(vendasPages), { hasTotals: false });
   const kwRx = buildKwRegex(palavrasViagem);
-  const linhas = [];
+  const linhas = [], infos = [];
   for (const f of faturas) {
     const banco = detectBank(f.pages);
     let itens;
@@ -551,9 +553,52 @@ function processarConferencia({ faturas, vendasPages, palavrasViagem = DEFAULT_K
     else if (LAYOUTS[banco]) itens = parseLayout(f.pages, LAYOUTS[banco]);
     else { const a = parseNubank(f.pages), b = parseItau(f.pages); itens = a.length >= b.length ? a : b; }
     for (const r of itens) { const c = conferir(r, S, kwRx); c.cartao = banco; c.arquivo = f.nome; linhas.push(c); }
+    infos.push(Object.assign({ nome: f.nome, cartao: banco }, totaisDoPdf(f.pages, banco)));
   }
   consolidar(linhas, S); sugerir(linhas, S, hoje); alternativas(linhas, S, hoje);
-  return { linhas, indice: S };
+  linhas.forEach(r => { r.categoria = categorizar(r); });
+  return { linhas, indice: S, faturas: resumoFaturas(linhas, infos) };
+}
+
+/* ===== Fatura na íntegra: categoria de cada lançamento e resumo por fatura ===== */
+const CATEGORIAS = {
+  viagem: 'Compra de viagem', outras: 'Outras compras', juros: 'Juros e encargos', multa: 'Multas',
+  iof: 'IOF', tarifa: 'Anuidade, tarifas e seguros', parcfat: 'Parcelamento de fatura',
+  pagamento: 'Pagamentos', credito: 'Estornos e créditos'
+};
+const CAT_ORDEM = ['viagem', 'outras', 'juros', 'multa', 'iof', 'tarifa', 'parcfat', 'pagamento', 'credito'];
+function categorizar(r) {
+  const d = r.desc;
+  if (r.valor < 0) return /pag(amento|to)?\b|inclus[aã]o/i.test(d) ? 'pagamento' : 'credito';
+  if (r.status === 'estorn') return 'viagem';
+  if (/\bIOF\b/i.test(d)) return 'iof';
+  if (/multa/i.test(d)) return 'multa';
+  if (/juros|encargo|rotativo|refinanciamento|mora\b/i.test(d)) return 'juros';
+  if (r.status !== 'ign') return 'viagem';
+  if (/parcelamento de fatura|fatura parcelada/i.test(d)) return 'parcfat';
+  if (/anuidade|tarifa|seguro|prote[cç][aã]o|\bSMS\b|\bUCC\b|avalia[cç][aã]o emerg|ressarcimento de (despesa|cobran)/i.test(d)) return 'tarifa';
+  return 'outras';
+}
+function totaisDoPdf(pages, banco) {
+  const L = LAYOUTS[banco] || {};
+  const t = pages.map(p => p.items.map(i => i.str).join(' ')).join(' ').replace(/\s+/g, ' ');
+  const V = '(-?\\d{1,3}(?:\\.\\d{3})*,\\d{2})';
+  const tot = L.total || new RegExp('(?:Total a pagar|Total da (?:sua )?fatura|Valor da fatura)\\s*:?\\s*(?:R\\$\\s*)?' + V, 'i');
+  const ant = L.anterior === null ? null : (L.anterior || new RegExp('(?:Saldo anterior|Fatura anterior|Saldo da fatura anterior)\\s*:?\\s*(?:R\\$\\s*)?' + V, 'i'));
+  const mt = t.match(tot), ma = ant ? t.match(ant) : null;
+  return { totalPdf: mt ? brNum(mt[1]) : null, anteriorPdf: ma ? brNum(ma[1]) : null };
+}
+function resumoFaturas(linhas, infos) {
+  return infos.map(f => {
+    const ls = linhas.filter(r => r.arquivo === f.nome);
+    const cat = {}; CAT_ORDEM.forEach(k => { cat[k] = 0; });
+    ls.forEach(r => { cat[r.categoria] += r.valor; });
+    const soma = ls.reduce((a, r) => a + r.valor, 0);
+    // anterior + lançamentos = total da fatura → todos os lançamentos foram lidos
+    const dif = f.totalPdf != null && f.anteriorPdf != null ? Math.round((f.anteriorPdf + soma - f.totalPdf) * 100) / 100 : null;
+    return Object.assign({}, f, { lancamentos: ls.length, soma, cat, difLeitura: dif,
+      leitura: dif == null ? 'Não verificada' : Math.abs(dif) < 0.05 ? 'Completa' : 'Diferença de R$ ' + fmtBR(dif) });
+  });
 }
 
 /** Filial(is) e rótulo das vendas ligadas a uma linha. */
@@ -563,17 +608,31 @@ function infoVenda(linha, indice) {
   return { vendas: vs, filial: filiais.join(', ') };
 }
 
-/** Matriz pronta para planilha (Excel/CSV). ncPorArquivo: { 'nome.pdf': '101' } */
-function linhasParaPlanilha(linhas, indice, ncPorArquivo = {}, situacoes = ['ok', 'div', 'prov', 'nf', 'semcod', 'estorn']) {
-  const cab = ['NC', 'Cartão', 'Arquivo', 'Data', 'Descrição', 'Parcela', 'Valor', 'Total no cartão (est.)', 'Total da venda', 'Diferença', 'Situação', 'Venda nº', 'Filial', 'Observação'];
+/** Matriz pronta para planilha (Excel/CSV), com todas as linhas da fatura. ncPorArquivo: { 'nome.pdf': '101' } */
+function linhasParaPlanilha(linhas, indice, ncPorArquivo = {}, situacoes = ['ok', 'div', 'prov', 'nf', 'semcod', 'estorn', 'ign']) {
+  const cab = ['NC', 'Cartão', 'Arquivo', 'Data', 'Descrição', 'Parcela', 'Valor', 'Categoria', 'Total no cartão (est.)', 'Total da venda', 'Diferença', 'Situação', 'Venda nº', 'Filial', 'Observação'];
   const out = [cab];
   for (const r of linhas.filter(x => situacoes.includes(x.status))) {
-    out.push([ncPorArquivo[r.arquivo] || '', r.cartao, r.arquivo, r.data, r.desc, r.parcela || '', r.valor,
+    out.push([ncPorArquivo[r.arquivo] || '', r.cartao, r.arquivo, r.data, r.desc, r.parcela || '', r.valor, CATEGORIAS[r.categoria] || '',
       r.first ? (r.cardTotal || r.estTotal || null) : null, r.first && r.sysTotal ? r.sysTotal : null, r.diff == null ? null : r.diff,
       SITUACOES[r.status], (r.vendas || []).join(' / '), infoVenda(r, indice).filial, r.nota]);
   }
   return out;
 }
 
-window.ConfCartao = { criarLeitor, detectBank, processarConferencia, linhasParaPlanilha, infoVenda, SITUACOES, DEFAULT_KW, fmtBR };
+/** Matriz do resumo por fatura (aba "Resumo por cartão" do Excel). */
+function resumoParaPlanilha(faturas, ncPorArquivo = {}) {
+  const cab = ['NC', 'Cartão', 'Arquivo', 'Total da fatura (PDF)', 'Fatura anterior (PDF)'].concat(CAT_ORDEM.map(k => CATEGORIAS[k]), ['Juros + multas + IOF', 'Leitura']);
+  const out = [cab];
+  const tot = CAT_ORDEM.map(() => 0); let jm = 0, tf = 0;
+  for (const f of faturas) {
+    const enc = f.cat.juros + f.cat.multa + f.cat.iof; jm += enc; tf += f.totalPdf || 0;
+    CAT_ORDEM.forEach((k, i) => { tot[i] += f.cat[k]; });
+    out.push([ncPorArquivo[f.nome] || '', f.cartao, f.nome, f.totalPdf, f.anteriorPdf].concat(CAT_ORDEM.map(k => f.cat[k]), [enc, f.leitura]));
+  }
+  if (faturas.length > 1) out.push(['', 'Total', '', tf, null].concat(tot, [jm, '']));
+  return out;
+}
+
+window.ConfCartao = { criarLeitor, detectBank, processarConferencia, linhasParaPlanilha, resumoParaPlanilha, infoVenda, SITUACOES, CATEGORIAS, CAT_ORDEM, DEFAULT_KW, fmtBR };
 })();
