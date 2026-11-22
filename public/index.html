@@ -471,7 +471,7 @@
         <div style="background:#fff;border:1px solid #E3E8F3;border-radius:14px;box-shadow:0 1px 3px rgba(16,24,40,.06);padding:18px 22px;display:flex;flex-direction:column;gap:6px;">
           <div style="font-size:15px;font-weight:700;">Importar relatórios para o DRE</div>
           <div style="font-size:13px;color:#1D4ED8;font-weight:700;">{{ impDestino }}</div>
-          <div style="font-size:12.5px;color:#667085;line-height:1.5;max-width:760px;text-wrap:pretty;">Envie os relatórios do mês em .xlsx, .xls, .csv ou PDF (o Faturamento Bruto do sistema de vendas é lido direto do PDF). Os itens com a mesma descrição são somados e lançados na linha do DRE escolhida. As escolhas ficam guardadas e são sugeridas nos próximos meses. Para trocar a operação ou a competência, use os seletores acima.</div>
+          <div style="font-size:12.5px;color:#667085;line-height:1.5;max-width:760px;text-wrap:pretty;">Envie os relatórios do mês em .xlsx, .xls, .csv ou PDF. O relatório de faturamento do sistema de vendas (PDF ou planilha) é reconhecido sozinho: tarifas de Azul Viagens, Azul Linhas e Consolidação, receita (DU + comissão) de cada uma e mark-up vão direto para as linhas certas, e a competência acompanha o período do relatório. Os itens com a mesma descrição são somados e lançados na linha do DRE escolhida. As escolhas ficam guardadas e são sugeridas nos próximos meses. Para trocar a operação ou a competência, use os seletores acima.</div>
           <sc-if value="{{ impSemPerm }}" hint-placeholder-val="{{ false }}">
             <div style="font-size:12.5px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 12px;margin-top:4px;">Seu acesso permite conferir, mas não lançar valores no DRE.</div>
           </sc-if>
@@ -495,6 +495,7 @@
                     </div>
                     <button sc-camel-on-click="{{ t.onRemover }}" style="border:none;background:none;color:#B42318;font-size:12px;font-weight:700;cursor:pointer;padding:2px;">Remover</button>
                   </div>
+                  <sc-if value="{{ t.colManual }}" hint-placeholder-val="{{ true }}">
                   <div>
                     <div style="font-size:11.5px;color:#6B7280;margin-bottom:4px;">Coluna da descrição</div>
                     <sc-raw-select value="{{ t.colDesc }}" sc-camel-on-change="{{ t.onColDesc }}" style="border:1px solid #D8DFEE;border-radius:8px;padding:9px 10px;font-size:13.5px;background:#fff;width:100%;">
@@ -507,6 +508,10 @@
                       <sc-for list="{{ t.colOps }}" as="o" hint-placeholder-count="3"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
                     </sc-raw-select>
                   </div>
+                  </sc-if>
+                  <sc-if value="{{ t.reconhecido }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-size:12px;font-weight:700;color:#027A48;background:#ECFDF3;border:1px solid #ABEFC6;border-radius:8px;padding:7px 10px;">Relatório de faturamento reconhecido: cada item já vai para a linha certa do DRE.</div>
+                  </sc-if>
                 </div>
               </sc-if>
             </div>
@@ -694,229 +699,130 @@
         </div>
       </sc-if>
       <sc-if value="{{ isFc }}" hint-placeholder-val="{{ false }}">
-        <div style="background:#fff;border:1px solid #E3E8F3;border-radius:14px;box-shadow:0 1px 3px rgba(16,24,40,.06);padding:18px 22px;display:flex;flex-direction:column;gap:16px;">
+        <div style="background:#fff;border:1px solid #E3E8F3;border-radius:14px;box-shadow:0 1px 3px rgba(16,24,40,.06);padding:18px 22px;display:flex;flex-direction:column;gap:14px;">
           <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
-            <div style="margin-right:auto;">
+            <div style="margin-right:auto;min-width:0;">
               <div style="display:flex;align-items:center;gap:8px;"><div style="font-size:15px;font-weight:700;">Fluxo de Caixa</div><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:#EEF2FF;color:#1D4ED8;">Só administradores</span></div>
-              <div style="font-size:12px;color:#8A94A6;margin-top:2px;">Despesas do dia, aportes com correção e controle de empréstimos e cartões. Não entra nos números do DRE.</div>
+              <div style="font-size:12px;color:#8A94A6;margin-top:2px;max-width:820px;text-wrap:pretty;">Funciona como uma planilha: digite nas células ou copie do Excel e cole (Ctrl+V) na primeira célula. Enter desce para a linha de baixo. Para levar uma tabela para o Excel ou o WhatsApp, use Copiar. Não entra nos números do DRE.</div>
             </div>
             <sc-if value="{{ fcPronto }}" hint-placeholder-val="{{ true }}">
-              <div style="display:flex;background:#EEF2F8;border-radius:9px;padding:3px;gap:2px;">
-                <sc-for list="{{ fcTabs }}" as="t" hint-placeholder-count="3">
-                  <button sc-camel-on-click="{{ t.onClick }}" style="border:none;padding:7px 14px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;background:{{ t.bg }};color:{{ t.fg }};box-shadow:{{ t.sombra }};">{{ t.label }}</button>
-                </sc-for>
-              </div>
+              <button sc-camel-on-click="{{ onFcNova }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">+ Nova planilha</button>
             </sc-if>
           </div>
+          <sc-if value="{{ fcNovaAberta }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;">
+              <sc-for list="{{ fcModelos }}" as="m" hint-placeholder-count="4">
+                <button sc-camel-on-click="{{ m.onClick }}" style="text-align:left;border:1px solid #BFD0FB;background:#F5F8FF;border-radius:10px;padding:10px 12px;cursor:pointer;">
+                  <span style="display:block;font-size:13px;font-weight:700;color:#1D4ED8;">{{ m.label }}</span>
+                  <span style="display:block;font-size:11.5px;color:#667085;margin-top:3px;line-height:1.4;">{{ m.desc }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
           <sc-if value="{{ fcTemAviso }}" hint-placeholder-val="{{ false }}">
-            <div style="font-size:12.5px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 12px;">{{ fcAviso }}</div>
-          </sc-if>
-
-          <sc-if value="{{ isFcDesp }}" hint-placeholder-val="{{ true }}">
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-              <div style="display:flex;background:#EEF2F8;border-radius:9px;padding:3px;gap:2px;">
-                <sc-for list="{{ fcFiltros }}" as="f" hint-placeholder-count="4">
-                  <button sc-camel-on-click="{{ f.onClick }}" style="border:none;padding:6px 12px;border-radius:7px;font-size:12.5px;font-weight:700;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }};box-shadow:{{ f.sombra }};">{{ f.label }}</button>
-                </sc-for>
-              </div>
-              <sc-if value="{{ fcMostraDia }}" hint-placeholder-val="{{ false }}">
-                <input type="date" value="{{ fcDia }}" sc-camel-on-change="{{ onFcDia }}" aria-label="Dia" style="padding:7px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;">
-              </sc-if>
-              <sc-if value="{{ fcMostraMes }}" hint-placeholder-val="{{ false }}">
-                <input type="month" value="{{ fcMes }}" sc-camel-on-change="{{ onFcMes }}" aria-label="Mês" style="padding:7px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;">
-              </sc-if>
-              <sc-raw-select value="{{ fcEmp }}" sc-camel-on-change="{{ onFcEmp }}" aria-label="Empresa" style="padding:7px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;background:#fff;">
-                <sc-for list="{{ fcEmpOpts }}" as="o" hint-placeholder-count="4"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
-              </sc-raw-select>
-            </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-              <div style="background:#FEF3F2;border:1px solid #FECDCA;border-radius:12px;padding:12px 14px;">
-                <div style="font-size:11.5px;font-weight:700;color:#B42318;text-transform:uppercase;letter-spacing:.04em;">Total das despesas</div>
-                <div style="font-size:20px;font-weight:800;color:#B42318;margin-top:4px;font-variant-numeric:tabular-nums;">{{ fcTotal }}</div>
-                <div style="font-size:11.5px;color:#B42318;">{{ fcQtd }} · pagas {{ fcPagas }}</div>
-              </div>
-              <sc-if value="{{ fcTemSaldo }}" hint-placeholder-val="{{ true }}">
-                <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;">
-                  <label for="fc-saldo" style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">{{ fcSaldoLabel }}</label>
-                  <input id="fc-saldo" type="text" sc-camel-input-mode="numeric" value="{{ fcSaldoInput }}" sc-camel-on-change="{{ onFcSaldo }}" sc-camel-on-blur="{{ onFcSaldoBlur }}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;font-size:18px;font-weight:800;color:#111827;border:1px solid #D8DFEE;border-radius:8px;padding:5px 8px;background:#fff;font-variant-numeric:tabular-nums;">
-                </div>
-                <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;">
-                  <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">{{ fcFinalLabel }}</div>
-                  <div style="font-size:20px;font-weight:800;color:{{ fcFinalCor }};margin-top:4px;font-variant-numeric:tabular-nums;">{{ fcFinal }}</div>
-                </div>
-              </sc-if>
-              <sc-for list="{{ fcPorEmp }}" as="e" hint-placeholder-count="2">
-                <div style="background:#fff;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;">
-                  <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">{{ e.nome }}</div>
-                  <div style="font-size:17px;font-weight:800;color:#111827;margin-top:4px;font-variant-numeric:tabular-nums;">{{ e.valor }}</div>
-                  <div style="font-size:11.5px;color:#667085;">{{ e.qtd }}</div>
-                </div>
-              </sc-for>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px;border:1px dashed #BFD0FB;border-radius:12px;background:#F8FAFF;">
-              <input type="text" value="{{ fcNdHist }}" sc-camel-on-change="{{ onFcNdHist }}" sc-camel-on-key-down="{{ onFcNdKey }}" placeholder="Histórico (ex.: FORNECEDOR - CELPE)" aria-label="Histórico" style="flex:2 1 240px;padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;box-sizing:border-box;">
-              <input type="text" sc-camel-input-mode="numeric" value="{{ fcNdValor }}" sc-camel-on-change="{{ onFcNdValor }}" sc-camel-on-key-down="{{ onFcNdKey }}" aria-label="Valor" style="width:130px;text-align:right;padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;box-sizing:border-box;">
-              <input type="date" value="{{ fcNdVenc }}" sc-camel-on-change="{{ onFcNdVenc }}" aria-label="Vencimento" style="padding:7px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;">
-              <sc-raw-select value="{{ fcNdEmp }}" sc-camel-on-change="{{ onFcNdEmp }}" aria-label="Empresa da despesa" style="padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;background:#fff;">
-                <sc-for list="{{ fcNdEmpOpts }}" as="o" hint-placeholder-count="3"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
-              </sc-raw-select>
-              <button sc-camel-on-click="{{ onFcAddDesp }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Lançar despesa</button>
-            </div>
-            <div style="border:1px solid #E3E8F3;border-radius:12px;overflow:auto;">
-              <table style="border-collapse:collapse;width:100%;font-size:12.5px;">
-                <thead><tr>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 10px;border-bottom:1px solid #E3E8F3;">Histórico</th>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:right;padding:9px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;">Valor</th>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;">Vencimento</th>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 10px;border-bottom:1px solid #E3E8F3;">Empresa</th>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 10px;border-bottom:1px solid #E3E8F3;">Situação</th>
-                  <th style="background:#F3F6FB;border-bottom:1px solid #E3E8F3;width:30px;"></th>
-                </tr></thead>
-                <tbody>
-                  <sc-for list="{{ fcLinhas }}" as="r" hint-placeholder-count="4">
-                    <tr style="background:{{ r.bg }};">
-                      <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#111827;">{{ r.hist }}</td>
-                      <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:#111827;font-weight:600;">{{ r.valor }}</td>
-                      <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;color:{{ r.vencCor }};font-weight:{{ r.vencPeso }};">{{ r.venc }}</td>
-                      <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#374151;">{{ r.empresa }}</td>
-                      <td style="padding:5px 10px;border-bottom:1px solid #F0F2F7;"><button sc-camel-on-click="{{ r.onPago }}" title="Clique para alternar entre paga e em aberto" style="border:none;font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px;cursor:pointer;background:{{ r.pagoBg }};color:{{ r.pagoFg }};">{{ r.pagoLabel }}</button></td>
-                      <td style="padding:5px 6px;border-bottom:1px solid #F0F2F7;"><button sc-camel-on-click="{{ r.onExcluir }}" aria-label="Excluir despesa" style="border:none;background:none;color:#DC2626;font-size:14px;cursor:pointer;">✕</button></td>
-                    </tr>
-                  </sc-for>
-                </tbody>
-              </table>
-              <sc-if value="{{ fcVazio }}" hint-placeholder-val="{{ false }}">
-                <div style="padding:22px;text-align:center;font-size:13px;color:#8A94A6;">Nenhuma despesa neste filtro.</div>
-              </sc-if>
-              <div style="display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border-top:2px solid #E3E8F3;background:#F7F9FC;font-size:13px;font-weight:800;">
-                <span>Total · {{ fcQtd }}</span><span style="color:#B42318;font-variant-numeric:tabular-nums;">{{ fcTotal }}</span>
-              </div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:#667085;">
-              <span style="font-weight:700;color:#374151;">Empresas:</span>
-              <sc-for list="{{ fcEmpChips }}" as="c" hint-placeholder-count="3">
-                <span style="display:inline-flex;align-items:center;gap:4px;background:#F2F4F7;border-radius:999px;padding:3px 4px 3px 10px;font-weight:600;color:#374151;">{{ c.nome }}<button sc-camel-on-click="{{ c.onRemover }}" aria-label="Remover empresa {{ c.nome }}" style="border:none;background:none;color:#98A2B3;cursor:pointer;font-size:12px;">✕</button></span>
-              </sc-for>
-              <input type="text" value="{{ fcNovaEmp }}" sc-camel-on-change="{{ onFcNovaEmp }}" placeholder="Nova empresa" aria-label="Nova empresa" style="width:140px;padding:5px 9px;border:1px dashed #D8DFEE;border-radius:7px;font-size:12.5px;">
-              <button sc-camel-on-click="{{ onFcAddEmp }}" style="background:#fff;border:1px solid #D8DFEE;color:#374151;padding:5px 10px;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer;">Adicionar</button>
+            <div role="status" style="display:flex;align-items:center;gap:10px;font-size:12.5px;color:#1E3A8A;background:#EEF4FF;border:1px solid #C7D7FE;border-radius:8px;padding:8px 12px;">
+              <span style="flex:1;min-width:0;">{{ fcAviso }}</span>
+              <button sc-camel-on-click="{{ fecharFcAviso }}" aria-label="Fechar aviso" style="background:none;border:none;color:#1E3A8A;font-size:14px;cursor:pointer;padding:0 4px;">✕</button>
             </div>
           </sc-if>
-
-          <sc-if value="{{ isFcAport }}" hint-placeholder-val="{{ false }}">
-            <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
-              <label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#6B7280;">Data de referência<input type="date" value="{{ fcRef }}" sc-camel-on-change="{{ onFcRef }}" style="padding:7px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
-              <label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#6B7280;">Correção (% ao dia)<input type="text" value="{{ fcTaxa }}" sc-camel-on-change="{{ onFcTaxa }}" sc-camel-on-blur="{{ onFcTaxaBlur }}" style="width:90px;text-align:right;padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
-              <label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#6B7280;">Investidor
-                <sc-raw-select value="{{ fcInv }}" sc-camel-on-change="{{ onFcInv }}" style="padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;background:#fff;">
-                  <sc-for list="{{ fcInvOpts }}" as="o" hint-placeholder-count="2"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
-                </sc-raw-select></label>
-            </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-              <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;"><div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Valor aportado</div><div style="font-size:20px;font-weight:800;color:#111827;margin-top:4px;font-variant-numeric:tabular-nums;">{{ fcApTotValor }}</div></div>
-              <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;"><div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Correção</div><div style="font-size:20px;font-weight:800;color:#B45309;margin-top:4px;font-variant-numeric:tabular-nums;">{{ fcApTotCorr }}</div></div>
-              <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;"><div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Abatimentos</div><div style="font-size:20px;font-weight:800;color:#027A48;margin-top:4px;font-variant-numeric:tabular-nums;">{{ fcApTotAbat }}</div></div>
-              <div style="background:#EEF2FF;border:1px solid #C7D5FB;border-radius:12px;padding:12px 14px;"><div style="font-size:11.5px;font-weight:700;color:#1D4ED8;text-transform:uppercase;letter-spacing:.04em;">{{ fcApTotalLabel }}</div><div style="font-size:20px;font-weight:800;color:#1D4ED8;margin-top:4px;font-variant-numeric:tabular-nums;">{{ fcApTotal }}</div></div>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:12px;border:1px dashed #BFD0FB;border-radius:12px;background:#F8FAFF;">
-              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;">Nº<input type="text" value="{{ fcNaNum }}" sc-camel-on-change="{{ onFcNaNum }}" placeholder="auto" style="width:60px;padding:7px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
-              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;">Investidor<input type="text" value="{{ fcNaInv }}" sc-camel-on-change="{{ onFcNaInv }}" style="width:110px;padding:7px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
-              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;flex:2 1 200px;">Histórico<input type="text" value="{{ fcNaHist }}" sc-camel-on-change="{{ onFcNaHist }}" placeholder="Ex.: DEV APORTE 19/11/2026" style="padding:7px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
-              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;">Valor do aporte<input type="text" sc-camel-input-mode="numeric" value="{{ fcNaValor }}" sc-camel-on-change="{{ onFcNaValor }}" style="width:120px;text-align:right;padding:7px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
-              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;">Data<input type="date" value="{{ fcNaData }}" sc-camel-on-change="{{ onFcNaData }}" style="padding:6px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
-              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;">Abatimento<input type="text" sc-camel-input-mode="numeric" value="{{ fcNaAbat }}" sc-camel-on-change="{{ onFcNaAbat }}" style="width:110px;text-align:right;padding:7px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
-              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;">Quitado em<input type="date" value="{{ fcNaQuit }}" sc-camel-on-change="{{ onFcNaQuit }}" style="padding:6px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
-              <button sc-camel-on-click="{{ onFcAddAporte }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Lançar aporte</button>
-            </div>
-            <div style="border:1px solid #E3E8F3;border-radius:12px;overflow:auto;">
-              <table style="border-collapse:collapse;width:100%;font-size:12.5px;">
-                <thead><tr>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Nº</th>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Histórico</th>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:right;padding:9px 8px;border-bottom:1px solid #E3E8F3;white-space:nowrap;">Valor aporte</th>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:right;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Abatimento</th>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Data</th>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 8px;border-bottom:1px solid #E3E8F3;white-space:nowrap;">Quitado em</th>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:right;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Dias</th>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:right;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Correção</th>
-                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:right;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Total</th>
-                  <th style="background:#F3F6FB;border-bottom:1px solid #E3E8F3;width:28px;"></th>
-                </tr></thead>
-                <tbody>
-                  <sc-for list="{{ fcApLinhas }}" as="a" hint-placeholder-count="4">
-                    <tr style="background:{{ a.bg }};">
-                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;color:#374151;">{{ a.num }}</td>
-                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;color:#111827;">{{ a.inv }} · {{ a.hist }}</td>
-                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;">{{ a.valor }}</td>
-                      <td style="padding:4px 6px;border-bottom:1px solid #F0F2F7;"><input type="text" sc-camel-input-mode="numeric" value="{{ a.abat }}" sc-camel-on-change="{{ a.onAbat }}" sc-camel-on-blur="{{ a.onAbatBlur }}" aria-label="Abatimento" style="width:105px;text-align:right;padding:5px 7px;border:1px solid #E3E8F3;border-radius:6px;font-size:12.5px;background:transparent;"></td>
-                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;white-space:nowrap;">{{ a.data }}</td>
-                      <td style="padding:4px 6px;border-bottom:1px solid #F0F2F7;"><input type="date" value="{{ a.quit }}" sc-camel-on-change="{{ a.onQuit }}" aria-label="Quitado em" style="padding:4px 6px;border:1px solid #E3E8F3;border-radius:6px;font-size:12px;background:transparent;"></td>
-                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;text-align:right;font-variant-numeric:tabular-nums;color:#667085;">{{ a.dias }}</td>
-                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:#B45309;">{{ a.correcao }}</td>
-                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:700;color:{{ a.totalCor }};">{{ a.total }}</td>
-                      <td style="padding:4px 6px;border-bottom:1px solid #F0F2F7;"><button sc-camel-on-click="{{ a.onExcluir }}" aria-label="Excluir aporte" style="border:none;background:none;color:#DC2626;font-size:14px;cursor:pointer;">✕</button></td>
-                    </tr>
-                  </sc-for>
-                </tbody>
-              </table>
-              <sc-if value="{{ fcApVazio }}" hint-placeholder-val="{{ false }}">
-                <div style="padding:22px;text-align:center;font-size:13px;color:#8A94A6;">Nenhum aporte lançado.</div>
-              </sc-if>
-              <div style="display:flex;justify-content:flex-end;gap:22px;flex-wrap:wrap;padding:9px 10px;border-top:2px solid #E3E8F3;background:#F7F9FC;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;">
-                <span>Aportado {{ fcApTotValor }}</span><span style="color:#027A48;">Abatido {{ fcApTotAbat }}</span><span style="color:#B45309;">Correção {{ fcApTotCorr }}</span><span style="color:#1D4ED8;">Total {{ fcApTotal }}</span>
-              </div>
-            </div>
-            <div style="font-size:12px;color:#667085;line-height:1.5;max-width:860px;">Correção simples: valor × taxa ao dia × dias. Os dias contam da data do aporte até a data de quitação (se preenchida) ou até a data de referência. Total = valor + correção − abatimento. Abatimento e quitação podem ser alterados direto na tabela.</div>
-          </sc-if>
-
-          <sc-if value="{{ isFcCtrl }}" hint-placeholder-val="{{ false }}">
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-              <input type="text" value="{{ fcNc }}" sc-camel-on-change="{{ onFcNc }}" sc-camel-on-key-down="{{ onFcNcKey }}" placeholder="Novo controle (ex.: DANIEL - CARTÃO ITAÚ)" aria-label="Nome do novo controle" style="flex:1 1 260px;max-width:380px;padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;">
-              <button sc-camel-on-click="{{ onFcAddCtrl }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Criar controle</button>
-              <span style="margin-left:auto;font-size:13px;color:#374151;">{{ fcCtrlQtd }} · saldo total <strong style="font-variant-numeric:tabular-nums;">{{ fcCtrlSaldo }}</strong></span>
-            </div>
-            <sc-if value="{{ fcCtrlVazio }}" hint-placeholder-val="{{ false }}">
-              <div style="padding:22px;text-align:center;font-size:13px;color:#8A94A6;border:1px dashed #E3E8F3;border-radius:12px;">Crie um controle para cada empréstimo, cartão ou pessoa (ex.: PAGAMENTOS - EDMUNDO, DEVOLUÇÃO, CARTÃO - ALYNNE).</div>
-            </sc-if>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px;">
-              <sc-for list="{{ fcCtrls }}" as="c" hint-placeholder-count="2">
-                <div style="border:1px solid #E3E8F3;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;">
-                  <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#F7F9FC;border-bottom:1px solid #E3E8F3;">
-                    <div style="font-size:13px;font-weight:800;color:#111827;margin-right:auto;">{{ c.nome }}</div>
-                    <div style="font-size:12px;color:#667085;">Saldo</div><div style="font-size:15px;font-weight:800;color:{{ c.saldoCor }};font-variant-numeric:tabular-nums;">{{ c.saldo }}</div>
-                    <button sc-camel-on-click="{{ c.onExcluir }}" aria-label="Excluir controle {{ c.nome }}" style="border:none;background:none;color:#98A2B3;font-size:13px;cursor:pointer;">✕</button>
+          <sc-if value="{{ fcPronto }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,540px),1fr));gap:18px;align-items:start;">
+              <sc-for list="{{ fcPlanilhas }}" as="p" hint-placeholder-count="2">
+                <section style="grid-column:{{ p.span }};border:1px solid #CBD2DE;border-radius:10px;overflow:hidden;background:#fff;min-width:0;">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;background:#F3F6FB;border-bottom:1px solid #CBD2DE;">
+                    <label for="{{ p.idTitulo }}" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">Título da planilha</label>
+                    <input id="{{ p.idTitulo }}" type="text" value="{{ p.tit.v }}" sc-camel-on-change="{{ p.tit.onChange }}" sc-camel-on-blur="{{ p.tit.onBlur }}" sc-camel-on-key-down="{{ p.tit.onKey }}" style="flex:1 1 180px;min-width:0;border:1px solid transparent;background:transparent;border-radius:6px;padding:4px 6px;font-size:13.5px;font-weight:800;color:#111827;text-transform:uppercase;">
+                    <span style="font-size:11.5px;color:#667085;white-space:nowrap;">{{ p.modeloLabel }} · {{ p.qtd }}</span>
+                    <sc-if value="{{ p.isAportes }}" hint-placeholder-val="{{ false }}">
+                      <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#475569;">Taxa
+                        <input type="text" aria-label="Taxa de correção, % ao dia" value="{{ p.taxa.v }}" sc-camel-on-change="{{ p.taxa.onChange }}" sc-camel-on-blur="{{ p.taxa.onBlur }}" sc-camel-on-key-down="{{ p.taxa.onKey }}" style="width:48px;box-sizing:border-box;border:1px solid #D0D5DD;border-radius:6px;padding:3px 6px;font-size:12px;text-align:right;">% ao dia</span>
+                      <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#475569;">Referência
+                        <input type="text" aria-label="Data de referência" value="{{ p.ref.v }}" sc-camel-on-change="{{ p.ref.onChange }}" sc-camel-on-blur="{{ p.ref.onBlur }}" sc-camel-on-key-down="{{ p.ref.onKey }}" style="width:86px;box-sizing:border-box;border:1px solid #D0D5DD;border-radius:6px;padding:3px 6px;font-size:12px;font-weight:700;color:#B42318;">
+                        <sc-if value="{{ p.refFixa }}" hint-placeholder-val="{{ false }}"><button sc-camel-on-click="{{ p.onRefHoje }}" title="Voltar a contar até hoje" style="border:none;background:none;color:#1D4ED8;font-size:12px;font-weight:700;cursor:pointer;padding:0 2px;">hoje</button></sc-if>
+                      </span>
+                    </sc-if>
+                    <span style="display:inline-flex;gap:4px;margin-left:auto;">
+                      <button sc-camel-on-click="{{ p.onCopiar }}" title="Copiar a planilha para colar no Excel ou no WhatsApp" style="background:#fff;border:1px solid #BFD0FB;color:#1D4ED8;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">Copiar</button>
+                      <sc-if value="{{ p.podeSubir }}" hint-placeholder-val="{{ false }}"><button sc-camel-on-click="{{ p.onSobe }}" aria-label="Mover planilha para cima" title="Mover para cima" style="background:#fff;border:1px solid #D0D5DD;color:#475569;padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;">↑</button></sc-if>
+                      <sc-if value="{{ p.podeDescer }}" hint-placeholder-val="{{ false }}"><button sc-camel-on-click="{{ p.onDesce }}" aria-label="Mover planilha para baixo" title="Mover para baixo" style="background:#fff;border:1px solid #D0D5DD;color:#475569;padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;">↓</button></sc-if>
+                      <button sc-camel-on-click="{{ p.onExcluir }}" aria-label="Excluir planilha" title="Excluir planilha" style="background:#fff;border:1px solid #D0D5DD;color:#B42318;padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;">✕</button>
+                    </span>
                   </div>
-                  <table style="border-collapse:collapse;width:100%;font-size:12.5px;">
-                    <thead><tr>
-                      <th style="text-align:left;padding:6px 10px;color:#8A94A6;font-size:11px;font-weight:700;">Data</th>
-                      <th style="text-align:left;padding:6px 10px;color:#8A94A6;font-size:11px;font-weight:700;">Histórico</th>
-                      <th style="text-align:right;padding:6px 10px;color:#8A94A6;font-size:11px;font-weight:700;">Valor</th>
-                      <th style="text-align:right;padding:6px 10px;color:#8A94A6;font-size:11px;font-weight:700;">Abatimento</th>
-                      <th style="text-align:right;padding:6px 10px;color:#8A94A6;font-size:11px;font-weight:700;">Saldo</th>
-                      <th style="width:24px;"></th>
-                    </tr></thead>
-                    <tbody>
-                      <sc-for list="{{ c.linhas }}" as="m" hint-placeholder-count="2">
+                  <div style="overflow:auto;max-height:{{ p.altura }};">
+                    <table style="border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums;">
+                      <thead>
                         <tr>
-                          <td style="padding:5px 10px;border-top:1px solid #F0F2F7;white-space:nowrap;">{{ m.data }}</td>
-                          <td style="padding:5px 10px;border-top:1px solid #F0F2F7;">{{ m.hist }}</td>
-                          <td style="padding:5px 10px;border-top:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;">{{ m.valor }}</td>
-                          <td style="padding:5px 10px;border-top:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:#027A48;">{{ m.abat }}</td>
-                          <td style="padding:5px 10px;border-top:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:700;">{{ m.saldo }}</td>
-                          <td style="padding:3px 4px;border-top:1px solid #F0F2F7;"><button sc-camel-on-click="{{ m.onExcluir }}" aria-label="Excluir lançamento" style="border:none;background:none;color:#DC2626;font-size:12px;cursor:pointer;">✕</button></td>
+                          <th style="position:sticky;top:0;z-index:1;width:34px;background:#E9EEF6;border:1px solid #CBD2DE;color:#667085;font-size:11px;font-weight:700;"></th>
+                          <sc-for list="{{ p.cab }}" as="h" hint-placeholder-count="4">
+                            <th style="position:sticky;top:0;z-index:1;background:#E9EEF6;border:1px solid #CBD2DE;padding:0;text-align:{{ h.al }};white-space:nowrap;">
+                              <sc-if value="{{ h.fixo }}" hint-placeholder-val="{{ true }}"><div style="padding:6px 8px;font-size:11px;font-weight:800;color:#344054;text-transform:uppercase;letter-spacing:.03em;" title="{{ h.tipo }}">{{ h.nome }}</div></sc-if>
+                              <sc-if value="{{ h.livre }}" hint-placeholder-val="{{ false }}">
+                                <div style="display:flex;align-items:center;">
+                                  <input type="text" aria-label="Nome da coluna" value="{{ h.nomeCampo.v }}" sc-camel-on-change="{{ h.nomeCampo.onChange }}" sc-camel-on-blur="{{ h.nomeCampo.onBlur }}" sc-camel-on-key-down="{{ h.nomeCampo.onKey }}" style="flex:1;min-width:60px;border:none;background:transparent;padding:6px 8px;font-size:11px;font-weight:800;color:#344054;text-transform:uppercase;text-align:{{ h.al }};">
+                                  <button sc-camel-on-click="{{ h.onRem }}" aria-label="Excluir coluna" title="Excluir coluna" style="border:none;background:none;color:#98A2B3;font-size:11px;cursor:pointer;padding:0 6px;">✕</button>
+                                </div>
+                              </sc-if>
+                            </th>
+                          </sc-for>
+                          <th style="position:sticky;top:0;z-index:1;width:28px;background:#E9EEF6;border:1px solid #CBD2DE;"></th>
                         </tr>
-                      </sc-for>
-                    </tbody>
-                  </table>
-                  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:8px 10px;border-top:1px solid #E3E8F3;background:#FCFDFF;margin-top:auto;">
-                    <input type="date" value="{{ c.nData }}" sc-camel-on-change="{{ c.onData }}" aria-label="Data" style="padding:5px 6px;border:1px solid #D8DFEE;border-radius:6px;font-size:12px;">
-                    <input type="text" value="{{ c.nHist }}" sc-camel-on-change="{{ c.onHist }}" placeholder="Histórico" aria-label="Histórico" style="flex:1 1 90px;min-width:80px;padding:6px 8px;border:1px solid #D8DFEE;border-radius:6px;font-size:12px;">
-                    <input type="text" sc-camel-input-mode="numeric" value="{{ c.nValor }}" sc-camel-on-change="{{ c.onValor }}" aria-label="Valor" title="Valor" style="width:92px;text-align:right;padding:6px 8px;border:1px solid #D8DFEE;border-radius:6px;font-size:12px;">
-                    <input type="text" sc-camel-input-mode="numeric" value="{{ c.nAbat }}" sc-camel-on-change="{{ c.onAbat }}" aria-label="Abatimento" title="Abatimento" style="width:92px;text-align:right;padding:6px 8px;border:1px solid #D8DFEE;border-radius:6px;font-size:12px;">
-                    <button sc-camel-on-click="{{ c.onAdd }}" style="background:#fff;border:1px solid #BFD0FB;color:#1D4ED8;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">Lançar</button>
+                      </thead>
+                      <tbody>
+                        <sc-for list="{{ p.linhas }}" as="l" hint-placeholder-count="5">
+                          <tr>
+                            <td style="background:#F3F6FB;border:1px solid #D9DEE7;color:#98A2B3;font-size:11px;text-align:center;padding:0 4px;">{{ l.num }}</td>
+                            <sc-for list="{{ l.cells }}" as="c" hint-placeholder-count="4">
+                              <td style="border:1px solid #D9DEE7;padding:0;background:{{ c.bg }};">
+                                <sc-if value="{{ c.editavel }}" hint-placeholder-val="{{ true }}">
+                                  <input id="{{ c.id }}" type="text" value="{{ c.txt }}" sc-camel-on-change="{{ c.onChange }}" sc-camel-on-blur="{{ c.onBlur }}" sc-camel-on-paste="{{ c.onPaste }}" sc-camel-on-key-down="{{ c.onKey }}" autocomplete="off" spellcheck="false" style="width:100%;min-width:{{ c.minW }};box-sizing:border-box;border:none;outline-offset:-2px;background:transparent;padding:5px 7px;font:inherit;font-variant-numeric:tabular-nums;color:{{ c.cor }};font-weight:{{ c.peso }};text-align:{{ c.al }};">
+                                </sc-if>
+                                <sc-if value="{{ c.soLeitura }}" hint-placeholder-val="{{ false }}">
+                                  <div style="padding:5px 7px;min-width:{{ c.minW }};box-sizing:border-box;text-align:{{ c.al }};color:{{ c.cor }};font-weight:{{ c.peso }};white-space:nowrap;">{{ c.txt }}</div>
+                                </sc-if>
+                              </td>
+                            </sc-for>
+                            <td style="border:1px solid #D9DEE7;padding:0;text-align:center;">
+                              <sc-if value="{{ l.existe }}" hint-placeholder-val="{{ true }}"><button sc-camel-on-click="{{ l.onRem }}" aria-label="Excluir linha" title="Excluir linha" style="border:none;background:none;color:#C0C6D0;font-size:11px;cursor:pointer;padding:4px 6px;" style-hover="color:#B42318;">✕</button></sc-if>
+                            </td>
+                          </tr>
+                        </sc-for>
+                      </tbody>
+                      <tfoot>
+                        <sc-for list="{{ p.rodape }}" as="f" hint-placeholder-count="1">
+                          <tr style="background:{{ f.bg }};">
+                            <td colspan="2" style="border:1px solid #CBD2DE;padding:6px 8px;font-size:12px;font-weight:800;color:#111827;text-align:center;letter-spacing:.03em;">{{ f.rotulo }}</td>
+                            <sc-for list="{{ f.cells }}" as="c" hint-placeholder-count="3">
+                              <td style="border:1px solid #CBD2DE;padding:0;text-align:right;">
+                                <sc-if value="{{ c.campo }}" hint-placeholder-val="{{ false }}">
+                                  <input type="text" aria-label="Saldo" value="{{ c.txt }}" sc-camel-on-change="{{ c.onChange }}" sc-camel-on-blur="{{ c.onBlur }}" placeholder="digite o saldo" style="width:100%;min-width:90px;box-sizing:border-box;border:none;background:#FFFBEB;padding:6px 8px;font:inherit;font-weight:800;text-align:right;color:#111827;">
+                                </sc-if>
+                                <sc-if value="{{ c.fixo }}" hint-placeholder-val="{{ true }}">
+                                  <div style="padding:6px 8px;font-weight:800;color:{{ c.cor }};white-space:nowrap;">{{ c.txt }}</div>
+                                </sc-if>
+                              </td>
+                            </sc-for>
+                            <td style="border:1px solid #CBD2DE;"></td>
+                          </tr>
+                        </sc-for>
+                      </tfoot>
+                    </table>
                   </div>
-                </div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 10px;font-size:11.5px;color:#8A94A6;border-top:1px solid #E3E8F3;">
+                    <span style="flex:1 1 240px;min-width:0;">{{ p.ajuda }}</span>
+                    <sc-if value="{{ p.isLivre }}" hint-placeholder-val="{{ false }}">
+                      <span style="display:inline-flex;gap:4px;align-items:center;">Coluna:
+                        <button sc-camel-on-click="{{ p.onColValor }}" style="background:#fff;border:1px solid #D0D5DD;color:#475569;padding:2px 8px;border-radius:6px;font-size:11.5px;cursor:pointer;">+ valor</button>
+                        <button sc-camel-on-click="{{ p.onColData }}" style="background:#fff;border:1px solid #D0D5DD;color:#475569;padding:2px 8px;border-radius:6px;font-size:11.5px;cursor:pointer;">+ data</button>
+                        <button sc-camel-on-click="{{ p.onColTexto }}" style="background:#fff;border:1px solid #D0D5DD;color:#475569;padding:2px 8px;border-radius:6px;font-size:11.5px;cursor:pointer;">+ texto</button>
+                      </span>
+                    </sc-if>
+                  </div>
+                </section>
               </sc-for>
             </div>
+            <sc-if value="{{ fcSemPlanilha }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:30px 0;text-align:center;font-size:13px;color:#8A94A6;">Nenhuma planilha. Clique em “+ Nova planilha”.</div>
+            </sc-if>
           </sc-if>
         </div>
       </sc-if>
@@ -2529,7 +2435,7 @@ class Component extends DCLogic {
     modulo: "financeiro",
     fc: null, fcSub: "despesas", fcFiltro: "aberto", fcDia: fcHojeISO(), fcMes: fcHojeISO().slice(0,7), fcEmp: "", fcRef: fcHojeISO(), fcInv: "",
     fcNd: {hist:"", valorRaw:0, venc:fcHojeISO(), emp:""}, fcNa: {num:"", inv:"JOÃO", hist:"", valorRaw:0, data:fcHojeISO(), abatRaw:0, quit:""},
-    fcNc: "", fcNm: {}, fcEdit: {}, fcNovaEmp: "", fcAviso: "", fcCarregando: false,
+    fcNc: "", fcNm: {}, fcEdit: {}, fcNovaEmp: "", fcAviso: "", fcCarregando: false, fcDraft: {}, fcNovaAberta: false,
     cp: null, cpCarregando: false, cpAviso: "", ccProj: [],
     fdEmp: "azul", fdComp: comModoLocal() ? FD_DEMO_COMP.azul : new Date().toISOString().slice(0,7), fdDados: {}, fdDraft: {}, fdMsg: "", fdErro: "", fdHover: -1, comDiaHover: -1,
     hdChamados: [], hdAtendentes: [], hdFiltro: "abertos", hdSel: null, hdFormOpen: false, hdNovo: hdNovoVazio(), hdErro: "", hdErroDet: "", hdResposta: "", hdInterno: false,
@@ -4209,7 +4115,15 @@ class Component extends DCLogic {
       if(colDesc<0) colDesc = p.cab.findIndex((_,i)=>p.linhas.some(r=>typeof r[i]==="string" && r[i].trim() && !isFinite(numBR(r[i]))));
       let colValor = acharColuna(p.cab, ["valor liquido","valor pago","valor total","valor","total","montante","saldo","liquido","vlr"], new Set([colDesc]));
       if(colValor<0) colValor = p.cab.findIndex((_,i)=>i!==colDesc && p.linhas.filter(r=>typeof r[i]==="number").length>=p.linhas.length/2);
-      this.setState(st=>({impArq:{...st.impArq, [tipo]:{...p, colDesc:Math.max(0,colDesc), colValor:Math.max(0,colValor)}}}));
+      const patch = {};
+      // Relatório de faturamento reconhecido: a competência do DRE acompanha o período do relatório.
+      if(p.automatico && p.periodo && p.periodo.ini.slice(0,7)===p.periodo.fim.slice(0,7)){
+        const ano = +p.periodo.ini.slice(0,4), mes = +p.periodo.ini.slice(5,7)-1;
+        if(YEARS.includes(ano) && (ano!==this.state.year || mes!==this.state.month)){ Object.assign(patch, {year:ano, month:mes}); patch.impMsg = "Competência ajustada para "+MESES[mes]+"/"+ano+", o período do relatório."; patch.impMsgOk = true; }
+      }
+      const unit = this.state.units[this.state.opIndex];
+      if(p.automatico && unit && unit.tipo!=="turismo") patch.impErro = "Este é um relatório de faturamento de turismo. Escolha a operação Loja Azul Viagens Shopping Recife ou Sonho Azul antes de lançar.";
+      this.setState(st=>({...patch, impArq:{...st.impArq, [tipo]:{...p, colDesc:Math.max(0,colDesc), colValor:Math.max(0,colValor)}}}));
     }).catch(err=>this.setState({impErro:err.message}));
   }
   impCols(tipo, campo, v){ this.setState(st=>({impArq:{...st.impArq, [tipo]:{...st.impArq[tipo], [campo]:Number(v)}}})); }
@@ -4228,7 +4142,7 @@ class Component extends DCLogic {
       if(!t.assinado) v = Math.abs(v);
       const g = m.get(chave) || {desc, chave, valor:0, n:0}; g.valor += v; g.n++; m.set(chave, g);
     }
-    a._gk = ck; a._grupos = Array.from(m.values()).map(g=>({...g, valor:Math.round(g.valor*100)/100})).sort((x,y)=>Math.abs(y.valor)-Math.abs(x.valor));
+    a._gk = ck; a._grupos = Array.from(m.values()).map(g=>({...g, valor:Math.round(g.valor*100)/100})).sort((x,y)=>a.automatico ? 0 : Math.abs(y.valor)-Math.abs(x.valor));
     return a._grupos;
   }
   async impLancar(soma){
@@ -4282,7 +4196,7 @@ class Component extends DCLogic {
       });
       pendTotal += pend;
       blocos.push({label:t.label+" · "+a.nome, pendTxt: !grupos.length ? "Nenhum valor encontrado nas colunas escolhidas" : pend ? pend+" item(ns) sem linha do DRE" : "Todos os itens classificados", pendCor: pend||!grupos.length ? "#B42318" : "#047857", grupos:gs});
-      return {...base, nome:a.nome, info: a.info || grupos.length+" itens · "+formatMoeda(total), colDesc:String(a.colDesc), colValor:String(a.colValor),
+      return {...base, nome:a.nome, info: a.info || grupos.length+" itens · "+formatMoeda(total), colManual: !a.automatico, reconhecido: !!a.automatico, colDesc:String(a.colDesc), colValor:String(a.colValor),
         colOps:a.cab.map((c,i)=>({value:String(i), label:c})),
         onColDesc:(e)=>this.impCols(t.id,"colDesc",e.target.value), onColValor:(e)=>this.impCols(t.id,"colValor",e.target.value), onRemover:()=>this.impRemover(t.id)};
     });
@@ -4444,7 +4358,7 @@ class Component extends DCLogic {
     const comSubEf = comEditNav || s.comSub==="comissao" ? s.comSub : "painel";
     const navCom = [["painel","Painel de vendas"],["comissao","Comissão"]].concat(comEditNav?[["importar","Importar relatório"]]:[]).map(([id,label])=>({label, ...on(mod==="comercial"&&comSubEf===id),
       onClick:()=>{ this.setState({modulo:"comercial", comSub:id}); if(!this.state.comCarregado) this.carregarComercial(); }}));
-    const finLabel = (ABAS_PERM.find(a=>a.id===viewEf)||{}).label || "";
+    const finLabel = viewEf==="fluxocaixa" ? "Fluxo de Caixa" : (ABAS_PERM.find(a=>a.id===viewEf)||{}).label || "";
     const rhLabel = "Painel do RH";
     const comLabel = comSubEf==="importar" ? "Importar relatório" : comSubEf==="comissao" ? "Comissão" : "Painel de vendas";
     const setF = (key, campo)=>(e)=>{ const v=e.target.value; this.setState(st=>({[key]:{...st[key],[campo]:v}})); };
@@ -4853,116 +4767,156 @@ class Component extends DCLogic {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a2), "Parcelas da agência");
     XLSX.writeFile(wb, "projecao-cartoes_" + new Date().toISOString().slice(0,10) + ".xlsx");
   }
+  // ----- Fluxo de Caixa em formato de planilha -----
+  fcPlanilhas(){ const pl = (this.state.fc && this.state.fc.planilhas) || {}; return Object.entries(pl).map(([id,p])=>({...p, id})).sort((a,b)=>(a.ordem||0)-(b.ordem||0)); }
+  fcGarantirPlanilhas(){
+    const fc = this.state.fc; if(!fc || this._fcMigrando) return;
+    if(Object.keys(fc.planilhas||{}).length) return;
+    this._fcMigrando = true;
+    fcMigrarParaPlanilhas(fc).forEach(p=>this.fcSalvar("planilhas", fcId(), p));
+    setTimeout(()=>{ this._fcMigrando = false; }, 500);
+  }
+  fcPl(id){ const p = ((this.state.fc||{}).planilhas||{})[id]; return p ? {...p, linhas: p.linhas.map(l=>l.slice()), colunas: p.colunas.map(c=>({...c}))} : null; }
+  fcPlGravar(id, p){ p.atualizadoEm = new Date().toISOString(); this.fcSalvar("planilhas", id, p); }
+  fcPlNova(modelo){
+    const ordem = Math.max(0, ...this.fcPlanilhas().map(p=>p.ordem||0)) + 1;
+    this.fcSalvar("planilhas", fcId(), fcNovaPlanilha(modelo, null, ordem));
+    this.setState({fcNovaAberta:false});
+  }
+  fcPlExcluir(id){
+    const p = this.fcPl(id); if(!p) return;
+    if(!window.confirm("Excluir a planilha \"" + p.titulo + "\"" + (p.linhas.length ? " com " + p.linhas.length + " linha(s)" : "") + "?")) return;
+    this.fcExcluir("planilhas", id);
+  }
+  fcPlMover(id, dir){
+    const lista = this.fcPlanilhas(), i = lista.findIndex(p=>p.id===id), j = i + dir;
+    if(i<0 || j<0 || j>=lista.length) return;
+    const a = this.fcPl(lista[i].id), b = this.fcPl(lista[j].id), oa = a.ordem||i, ob = b.ordem||j;
+    a.ordem = ob; b.ordem = oa===ob ? ob + dir : oa;
+    this.fcPlGravar(lista[i].id, a); this.fcPlGravar(lista[j].id, b);
+  }
+  fcPlCampo(id, campo, txt){
+    const p = this.fcPl(id); if(!p) return;
+    if(campo==="saldo"){ const v = fcValorDe(txt); p.saldo = v; }
+    else if(campo==="taxa"){ const v = fcValorDe(txt); p.taxa = v==null ? FC_TAXA_PADRAO : v; }
+    else if(campo==="ref"){ p.ref = fcDataDe(txt) || ""; }
+    else if(campo==="titulo"){ p.titulo = String(txt||"").trim() || p.titulo; }
+    this.fcPlGravar(id, p);
+  }
+  fcPlCel(id, r, c, txt){
+    const p = this.fcPl(id); if(!p) return; const col = p.colunas[c]; if(!col || col.tipo==="calc") return;
+    const v = fcCelula(col.tipo, txt);
+    if(r>=p.linhas.length){ if(v==null || v==="") return; p.linhas.push(p.colunas.map(()=>null)); r = p.linhas.length-1; }
+    if(p.linhas[r][c]===v) return;
+    p.linhas[r][c] = v;
+    p.linhas = p.linhas.filter(l=>!fcLinhaVazia(l));
+    this.fcPlGravar(id, p);
+  }
+  fcPlColar(id, r, c, e){
+    const txt = e.clipboardData ? e.clipboardData.getData("text/plain") : "";
+    if(!/[\t\n]/.test(txt)) return; // um valor só: o navegador cola normalmente
+    e.preventDefault();
+    const p = this.fcPl(id); if(!p) return;
+    const m = fcLerColado(txt);
+    p.linhas = fcColar(p, Math.min(r, p.linhas.length), c, m);
+    this.setState({fcDraft:{}, fcAviso: m.length + " linha(s) coladas em " + p.titulo + "."});
+    this.fcPlGravar(id, p);
+  }
+  fcPlRemLinha(id, r){ const p = this.fcPl(id); if(!p || r>=p.linhas.length) return; p.linhas.splice(r,1); this.fcPlGravar(id, p); }
+  fcPlInsLinha(id, r){ const p = this.fcPl(id); if(!p) return; p.linhas.splice(r,0,p.colunas.map(()=>"")); this.fcPlGravar(id, p); }
+  fcPlColNome(id, c, nome){ const p = this.fcPl(id); if(!p || !String(nome).trim()) return; p.colunas[c].nome = String(nome).trim(); this.fcPlGravar(id, p); }
+  fcPlColAdd(id, tipo){ const p = this.fcPl(id); if(!p) return; p.colunas.push({nome: tipo==="valor" ? "Valor" : tipo==="data" ? "Data" : "Coluna", tipo}); p.linhas.forEach(l=>l.push(null)); this.fcPlGravar(id, p); }
+  fcPlColRem(id, c){
+    const p = this.fcPl(id); if(!p || p.colunas.length<=1) return;
+    if(p.linhas.some(l=>l[c]!=null && l[c]!=="") && !window.confirm("Excluir a coluna \"" + p.colunas[c].nome + "\" e os valores dela?")) return;
+    p.colunas.splice(c,1); p.linhas.forEach(l=>l.splice(c,1)); p.linhas = p.linhas.filter(l=>!fcLinhaVazia(l)); this.fcPlGravar(id, p);
+  }
+  fcPlCopiar(id){
+    const p = this.fcPl(id); if(!p) return;
+    const tsv = fcPlanilhaTSV(p, fcHojeISO());
+    const ok = ()=>this.setState({fcAviso:"\"" + p.titulo + "\" copiada. Cole no Excel, no Google Planilhas ou no WhatsApp."});
+    try{ navigator.clipboard.writeText(tsv).then(ok, ()=>this.fcCopiarFallback(tsv, ok)); }catch(e){ this.fcCopiarFallback(tsv, ok); }
+  }
+  fcCopiarFallback(tsv, ok){
+    const ta = document.createElement("textarea"); ta.value = tsv; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); ok(); }catch(e){ this.setState({fcAviso:"Não foi possível copiar. Selecione as células e use Ctrl+C."}); }
+    document.body.removeChild(ta);
+  }
+  fcPlTecla(e, id, r, c, nLin, nCol){
+    const ir = (rr, cc)=>{ const el = document.getElementById("fcc-" + id + "-" + rr + "-" + cc); if(el){ e.preventDefault(); el.focus(); if(el.select) el.select(); } };
+    if(e.key==="Enter" || (e.key==="ArrowDown" && !e.altKey)) ir(Math.min(r+1, nLin), c);
+    else if(e.key==="ArrowUp") ir(Math.max(r-1, 0), c);
+    else if(e.key==="Escape"){ this.setState(st=>{ const d = {...(st.fcDraft||{})}; delete d[id+":"+r+":"+c]; return {fcDraft:d}; }); e.target.blur(); }
+  }
   fcVals(){
     const s = this.state;
     if(this.moduloEfetivo()!=="financeiro" || this.viewEfetiva()!=="fluxocaixa") return {isFc:false};
     if(!s.fc){ if(!s.fcCarregando) setTimeout(()=>this.fcCarregar(), 0); return {isFc:true, fcPronto:false, fcAviso:"Carregando…", fcTemAviso:true}; }
-    const fc = s.fc, cfg = this.fcConfig(), hoje = fcHojeISO(), M = v=>formatMoeda(v||0);
-    const seg = (on)=>({bg: on ? "#fff" : "transparent", fg: on ? "#1D4ED8" : "#475569", sombra: on ? "0 1px 2px rgba(16,24,40,.08)" : "none"});
-    const tabs = [["despesas","Despesas"],["aportes","Aportes"],["controles","Empréstimos e cartões"]].map(([id,label])=>({label, ...seg(s.fcSub===id), onClick:()=>this.setState({fcSub:id, fcAviso:""})}));
-    const out = {isFc:true, fcPronto:true, fcTabs:tabs, fcAviso:s.fcAviso, fcTemAviso:!!s.fcAviso,
-      isFcDesp: s.fcSub==="despesas", isFcAport: s.fcSub==="aportes", isFcCtrl: s.fcSub==="controles"};
-    // ----- Despesas -----
-    const filtros = [["aberto","Em aberto"],["dia","Dia"],["mes","Mês"],["todas","Todas"]];
-    const todas = Object.entries(fc.despesas).map(([id,d])=>({id, ...d}));
-    const lista = todas.filter(d=>{
-      if(s.fcEmp && d.empresa!==s.fcEmp) return false;
-      if(s.fcFiltro==="aberto") return !d.pago;
-      if(s.fcFiltro==="dia") return d.venc===s.fcDia;
-      if(s.fcFiltro==="mes") return (d.venc||"").slice(0,7)===s.fcMes;
-      return true;
-    }).sort((a,b)=>(a.venc||"").localeCompare(b.venc||"") || (a.historico||"").localeCompare(b.historico||""));
-    const total = lista.reduce((t,d)=>t+fcNum(d.valor),0), pagas = lista.filter(d=>d.pago).reduce((t,d)=>t+fcNum(d.valor),0);
-    const diaSaldo = s.fcFiltro==="dia" ? s.fcDia : hoje, temSaldo = s.fcFiltro==="aberto" || s.fcFiltro==="dia";
-    const saldoRec = fc.saldos[diaSaldo], saldo = saldoRec ? fcNum(saldoRec.valor) : 0;
-    const aPagar = total - pagas, final = saldo - (s.fcFiltro==="aberto" ? total : aPagar);
-    const porEmp = cfg.empresas.concat(Array.from(new Set(lista.map(d=>d.empresa))).filter(e=>!cfg.empresas.includes(e)))
-      .map(e=>({nome:e, valor:lista.filter(d=>d.empresa===e).reduce((t,d)=>t+fcNum(d.valor),0), qtd:lista.filter(d=>d.empresa===e).length})).filter(x=>x.qtd>0)
-      .map(x=>({nome:x.nome, valor:M(x.valor), qtd:x.qtd + (x.qtd===1 ? " despesa" : " despesas")}));
-    const nd = s.fcNd;
-    Object.assign(out, {
-      fcFiltros: filtros.map(([id,label])=>({label, ...seg(s.fcFiltro===id), onClick:()=>this.setState({fcFiltro:id})})),
-      fcMostraDia: s.fcFiltro==="dia", fcMostraMes: s.fcFiltro==="mes", fcDia: s.fcDia, fcMes: s.fcMes,
-      onFcDia:(e)=>{ if(e.target.value) this.setState({fcDia:e.target.value}); }, onFcMes:(e)=>{ if(e.target.value) this.setState({fcMes:e.target.value}); },
-      fcEmpOpts: [{value:"", label:"Todas as empresas"}].concat(cfg.empresas.map(e=>({value:e, label:e}))), fcEmp: s.fcEmp, onFcEmp:(e)=>this.setState({fcEmp:e.target.value}),
-      fcTotal: M(total), fcQtd: lista.length + (lista.length===1 ? " despesa" : " despesas"), fcPagas: M(pagas), fcAPagar: M(aPagar),
-      fcTemSaldo: temSaldo, fcSaldoLabel: "Saldo em " + fcData(diaSaldo), fcSaldo: M(saldo),
-      onFcSaldo:(e)=>{ const v = parseMoedaInput(e.target.value); this.setState(st=>({fcEdit:{...st.fcEdit, saldo:{dia:diaSaldo, v}}})); },
-      fcSaldoInput: s.fcEdit.saldo && s.fcEdit.saldo.dia===diaSaldo ? M(s.fcEdit.saldo.v) : M(saldo),
-      onFcSaldoBlur:()=>{ const e = this.state.fcEdit.saldo; if(e && e.dia===diaSaldo){ this.fcSalvar("saldos", diaSaldo, {valor:e.v, dia:diaSaldo}); this.setState(st=>({fcEdit:{...st.fcEdit, saldo:null}})); } },
-      fcFinal: M(final), fcFinalCor: final<0 ? "#B42318" : "#027A48", fcFinalLabel: s.fcFiltro==="aberto" ? "Final (saldo − em aberto)" : "Final (saldo − a pagar)",
-      fcPorEmp: porEmp, fcTemPorEmp: porEmp.length>0,
-      fcLinhas: lista.map(d=>{ const venc = !d.pago && d.venc && d.venc < hoje;
-        return {hist:d.historico, valor:M(d.valor), venc:fcData(d.venc), vencCor: venc ? "#B42318" : "#374151", vencPeso: venc ? "700" : "500", empresa:d.empresa,
-          pagoLabel: d.pago ? "Paga" : "Em aberto", pagoBg: d.pago ? "#ECFDF3" : "#FFFBEB", pagoFg: d.pago ? "#027A48" : "#B45309", bg: d.pago ? "#FAFBFD" : "#fff",
-          onPago:()=>this.fcSalvar("despesas", d.id, {...fc.despesas[d.id], pago:!d.pago, pagoEm: d.pago ? "" : hoje}),
-          onExcluir:()=>{ if(window.confirm("Excluir a despesa \"" + d.historico + "\"?")) this.fcExcluir("despesas", d.id); }}; }),
-      fcVazio: lista.length===0,
-      fcNdHist: nd.hist, onFcNdHist:(e)=>{ const v = e.target.value; this.setState(st=>({fcNd:{...st.fcNd, hist:v}})); },
-      fcNdValor: M(nd.valorRaw), onFcNdValor:(e)=>{ const v = parseMoedaInput(e.target.value); this.setState(st=>({fcNd:{...st.fcNd, valorRaw:v}})); },
-      fcNdVenc: nd.venc, onFcNdVenc:(e)=>{ const v = e.target.value; this.setState(st=>({fcNd:{...st.fcNd, venc:v}})); },
-      fcNdEmp: nd.emp || cfg.empresas[0], fcNdEmpOpts: cfg.empresas.map(e=>({value:e, label:e})), onFcNdEmp:(e)=>{ const v = e.target.value; this.setState(st=>({fcNd:{...st.fcNd, emp:v}})); },
-      onFcAddDesp:()=>this.fcAddDespesa(), onFcNdKey:(e)=>{ if(e.key==="Enter") this.fcAddDespesa(); },
-      fcEmpChips: cfg.empresas.map(e=>({nome:e, onRemover:()=>{ if(cfg.empresas.length>1) this.fcSalvar("config", "geral", {...cfg, empresas:cfg.empresas.filter(x=>x!==e)}); }})),
-      fcNovaEmp: s.fcNovaEmp, onFcNovaEmp:(e)=>this.setState({fcNovaEmp:e.target.value}),
-      onFcAddEmp:()=>{ const n = (this.state.fcNovaEmp||"").trim().toUpperCase(); if(n && !cfg.empresas.includes(n)){ this.fcSalvar("config", "geral", {...cfg, empresas:cfg.empresas.concat(n)}); } this.setState({fcNovaEmp:""}); },
+    if(!Object.keys(s.fc.planilhas||{}).length && !s.fcCarregando) setTimeout(()=>this.fcGarantirPlanilhas(), 0);
+    const hoje = fcHojeISO(), draft = s.fcDraft||{};
+    const setDraft = (key, v)=>this.setState(st=>({fcDraft:{...(st.fcDraft||{}), [key]:v}}));
+    const tiraDraft = key=>this.setState(st=>{ const d = {...(st.fcDraft||{})}; delete d[key]; return {fcDraft:d}; });
+    const campo = (key, atual, commit)=>({v: draft[key]!=null ? draft[key] : atual, onChange:(e)=>setDraft(key, e.target.value),
+      onBlur:(e)=>{ const v = e.target.value; tiraDraft(key); if(v!==atual) commit(v); }, onKey:(e)=>{ if(e.key==="Enter") e.target.blur(); }});
+    const planilhas = this.fcPlanilhas().map((p, pi, todas)=>{
+      const id = p.id, k = fcCalcPlanilha(p, hoje), nCol = p.colunas.length, nLin = p.linhas.length;
+      const larga = nCol>5;
+      const cel = (r, c)=>{
+        const col = p.colunas[c], l = p.linhas[r] || [], key = id+":"+r+":"+c;
+        const calcV = k.calc[r] ? k.calc[r][c] : null;
+        const ab = p.modelo==="aportes" && r<nLin ? Math.abs(typeof l[3]==="number" ? l[3] : 0) : 0;
+        const soLeitura = col.tipo==="calc" || (col.tipo==="dias" && !ab);
+        const txt = draft[key]!=null ? draft[key]
+          : col.tipo==="calc" ? (calcV==null ? "" : fcFmtValor(calcV))
+          : col.tipo==="dias" ? (ab && typeof l[c]==="number" ? String(l[c]) : (calcV==null ? "" : String(calcV)))
+          : fcTextoCelula(col.tipo, l[c]);
+        const n = typeof l[c]==="number" ? l[c] : calcV;
+        const dir = col.tipo==="valor" || col.tipo==="calc" || col.tipo==="dias";
+        const minW = col.tipo==="texto" ? (/hist/i.test(col.nome) ? "260px" : "110px") : col.tipo==="data" ? "92px" : col.tipo==="dias" ? "64px" : "104px";
+        return {id:"fcc-"+id+"-"+r+"-"+c, txt, soLeitura, editavel:!soLeitura, minW,
+          al: dir ? "right" : "left", cor: dir && n<0 ? "#B42318" : col.tipo==="calc" ? "#1E3A8A" : "#111827",
+          bg: soLeitura ? "#F8FAFD" : "#fff", peso: col.tipo==="calc" && c===nCol-1 ? "700" : "400",
+          onChange:(e)=>{ const v = e.target.value; this.setState(st=>({fcDraft:{...(st.fcDraft||{}), [key]:v}})); },
+          onBlur:(e)=>{ const v = e.target.value; this.setState(st=>{ const d = {...(st.fcDraft||{})}; delete d[key]; return {fcDraft:d}; }); if(draft[key]!=null || v!==txt) this.fcPlCel(id, r, c, v); },
+          onPaste:(e)=>this.fcPlColar(id, r, c, e),
+          onKey:(e)=>this.fcPlTecla(e, id, r, c, nLin, nCol)};
+      };
+      const linhas = [];
+      for(let r=0; r<=nLin; r++) linhas.push({num: r<nLin ? String(r+1) : "+", nova: r===nLin, existe: r<nLin, cells: p.colunas.map((_,c)=>cel(r,c)),
+        onRem:()=>this.fcPlRemLinha(id, r), onIns:()=>this.fcPlInsLinha(id, r)});
+      const rodape = k.rodape.map(f=>{
+        const ed = f.editavel==="saldo", key = id+":saldo";
+        return {rotulo:f.rotulo, destaque:!!f.destaque, ed, naoEd:!ed,
+          bg: f.destaque ? (k.final<0 ? "#FEF3F2" : "#ECFDF3") : "#F3F6FB",
+          cells: p.colunas.map((c,i)=>{
+            if(i===0) return {txt:"", vazio:true};
+            const v = f.valores[i];
+            const t = ed && i===1 ? (draft[key]!=null ? draft[key] : fcFmtValor(p.saldo)) : v!=null ? fcFmtValor(v) : (f.texto && f.texto[i]) || "";
+            return {txt:t, vazio:false, campo: ed && i===1, fixo: !(ed && i===1), cor: v<0 ? "#B42318" : f.destaque ? "#05603A" : "#111827",
+              onChange:(e)=>{ const x = e.target.value; this.setState(st=>({fcDraft:{...(st.fcDraft||{}), [key]:x}})); },
+              onBlur:(e)=>{ const x = e.target.value; this.setState(st=>{ const d = {...(st.fcDraft||{})}; delete d[key]; return {fcDraft:d}; }); this.fcPlCampo(id, "saldo", x); }};
+          }).slice(1)};
+      });
+      return {id, titulo:p.titulo, idTitulo:"fct-"+id, modeloLabel:(FC_MODELOS[p.modelo]||FC_MODELOS.livre).label, ajuda:(FC_MODELOS[p.modelo]||FC_MODELOS.livre).desc,
+        larga, span: larga ? "1 / -1" : "auto", altura: nLin>18 ? "620px" : "none",
+        cab: p.colunas.map((c,i)=>({nome:c.nome, nomeCampo: campo(id+":col"+i, c.nome, v=>this.fcPlColNome(id, i, v)), al: ["valor","calc","dias"].includes(c.tipo) ? "right" : "left", livre: p.modelo==="livre", fixo: p.modelo!=="livre",
+          tipo: c.tipo==="calc" ? "calculada" : "",
+          onRem:()=>this.fcPlColRem(id, i)})),
+        linhas, rodape, qtd: nLin + (nLin===1 ? " linha" : " linhas"),
+        isAportes: p.modelo==="aportes", isLivre: p.modelo==="livre",
+        tit: campo(id+":titulo", p.titulo, v=>this.fcPlCampo(id, "titulo", v)),
+        taxa: campo(id+":taxa", String(p.taxa==null ? FC_TAXA_PADRAO : p.taxa).replace(".", ","), v=>this.fcPlCampo(id, "taxa", v)),
+        ref: campo(id+":ref", fcFmtData(p.ref || hoje), v=>this.fcPlCampo(id, "ref", v)), refAuto: !p.ref, refFixa: !!p.ref,
+        onRefHoje:()=>this.fcPlCampo(id, "ref", ""),
+        onCopiar:()=>this.fcPlCopiar(id), onExcluir:()=>this.fcPlExcluir(id),
+        onSobe:()=>this.fcPlMover(id, -1), onDesce:()=>this.fcPlMover(id, +1), podeSubir: pi>0, podeDescer: pi<todas.length-1,
+        onColValor:()=>this.fcPlColAdd(id, "valor"), onColTexto:()=>this.fcPlColAdd(id, "texto"), onColData:()=>this.fcPlColAdd(id, "data")};
     });
-    // ----- Aportes -----
-    const ref = s.fcRef || hoje, taxa = cfg.taxa;
-    const aps = Object.entries(fc.aportes).map(([id,a])=>({id, ...a, ...fcCalcAporte(a, ref, taxa)}));
-    const invs = Array.from(new Set(aps.map(a=>a.investidor).filter(Boolean))).sort();
-    const apsF = aps.filter(a=>!s.fcInv || a.investidor===s.fcInv).sort((a,b)=>(parseInt(a.numero,10)||0)-(parseInt(b.numero,10)||0) || (a.data||"").localeCompare(b.data||""));
-    const soma = k=>apsF.reduce((t,a)=>t+fcNum(a[k]),0);
-    const na = s.fcNa, ed = s.fcEdit;
-    Object.assign(out, {
-      fcRef: ref, onFcRef:(e)=>{ if(e.target.value) this.setState({fcRef:e.target.value}); },
-      fcTaxa: ed.taxa!=null ? ed.taxa : String(taxa).replace(".", ","), onFcTaxa:(e)=>{ const v = e.target.value; this.setState(st=>({fcEdit:{...st.fcEdit, taxa:v}})); },
-      onFcTaxaBlur:()=>{ const v = this.state.fcEdit.taxa; if(v!=null){ const n = parseFloat(String(v).replace(",", ".")); if(isFinite(n) && n>=0) this.fcSalvar("config", "geral", {...cfg, taxa:n}); this.setState(st=>({fcEdit:{...st.fcEdit, taxa:null}})); } },
-      fcInvOpts: [{value:"", label:"Todos os investidores"}].concat(invs.map(i=>({value:i, label:i}))), fcInv: s.fcInv, onFcInv:(e)=>this.setState({fcInv:e.target.value}),
-      fcApTotValor: M(soma("valor")), fcApTotAbat: M(soma("abatimento")), fcApTotCorr: M(soma("correcao")), fcApTotal: M(soma("total")),
-      fcApTotalLabel: (s.fcInv ? s.fcInv + " · " : "") + "Total em " + fcData(ref),
-      fcApLinhas: apsF.map(a=>{ const k = "ab-"+a.id, kq = "q-"+a.id, quit = Math.abs(a.total) < 0.05 && (a.abatimento>0);
-        return {num:a.numero, hist:a.historico, inv:a.investidor, valor:M(a.valor), data:fcData(a.data), dias:a.dias, correcao:M(a.correcao), total:M(a.total),
-          totalCor: a.total<0 ? "#B42318" : "#111827", bg: quit ? "#EEF6FC" : "#fff",
-          abat: ed[k]!=null ? M(ed[k]) : M(a.abatimento),
-          onAbat:(e)=>{ const v = parseMoedaInput(e.target.value); this.setState(st=>({fcEdit:{...st.fcEdit, [k]:v}})); },
-          onAbatBlur:()=>{ const v = this.state.fcEdit[k]; if(v!=null){ this.fcSalvar("aportes", a.id, {...fc.aportes[a.id], abatimento:v}); this.setState(st=>({fcEdit:{...st.fcEdit, [k]:null}})); } },
-          quit: a.quitadoEm || "", onQuit:(e)=>this.fcSalvar("aportes", a.id, {...fc.aportes[a.id], quitadoEm:e.target.value||""}),
-          onExcluir:()=>{ if(window.confirm("Excluir o aporte " + a.numero + "?")) this.fcExcluir("aportes", a.id); }}; }),
-      fcApVazio: apsF.length===0,
-      fcNaNum: na.num, onFcNaNum:(e)=>{ const v = e.target.value; this.setState(st=>({fcNa:{...st.fcNa, num:v}})); },
-      fcNaInv: na.inv, onFcNaInv:(e)=>{ const v = e.target.value; this.setState(st=>({fcNa:{...st.fcNa, inv:v}})); },
-      fcNaHist: na.hist, onFcNaHist:(e)=>{ const v = e.target.value; this.setState(st=>({fcNa:{...st.fcNa, hist:v}})); },
-      fcNaValor: M(na.valorRaw), onFcNaValor:(e)=>{ const v = parseMoedaInput(e.target.value); this.setState(st=>({fcNa:{...st.fcNa, valorRaw:v}})); },
-      fcNaAbat: M(na.abatRaw), onFcNaAbat:(e)=>{ const v = parseMoedaInput(e.target.value); this.setState(st=>({fcNa:{...st.fcNa, abatRaw:v}})); },
-      fcNaData: na.data, onFcNaData:(e)=>{ const v = e.target.value; this.setState(st=>({fcNa:{...st.fcNa, data:v}})); },
-      fcNaQuit: na.quit, onFcNaQuit:(e)=>{ const v = e.target.value; this.setState(st=>({fcNa:{...st.fcNa, quit:v}})); },
-      onFcAddAporte:()=>this.fcAddAporte(),
-    });
-    // ----- Empréstimos e cartões -----
-    const movs = Object.entries(fc.movs).map(([id,m])=>({id, ...m}));
-    const ctrls = Object.entries(fc.controles).map(([id,c])=>({id, ...c})).sort((a,b)=>(a.nome||"").localeCompare(b.nome||""));
-    let saldoGeral = 0;
-    const fcCtrls = ctrls.map(c=>{
-      const r = fcCalcControle(movs.filter(m=>m.controleId===c.id)); saldoGeral += r.saldo;
-      const nm = (s.fcNm||{})[c.id] || {data:hoje, hist:"", valorRaw:0, abatRaw:0};
-      const setNm = (campo, v)=>this.setState(st=>({fcNm:{...st.fcNm, [c.id]:{...((st.fcNm||{})[c.id] || {data:hoje, hist:"", valorRaw:0, abatRaw:0}), [campo]:v}}}));
-      return {id:c.id, nome:c.nome, saldo:M(r.saldo), saldoCor: r.saldo>0 ? "#B42318" : "#027A48", totValor:M(r.totalValor), totAbat:M(r.totalAbat),
-        linhas: r.linhas.map(m=>({data:fcData(m.data), hist:m.historico||"—", valor: m.valor ? M(m.valor) : "—", abat: m.abatimento ? M(m.abatimento) : "—", saldo:M(m.saldo),
-          onExcluir:()=>{ if(window.confirm("Excluir este lançamento?")) this.fcExcluir("movs", m.id); }})),
-        vazio: r.linhas.length===0,
-        nData: nm.data, nHist: nm.hist, nValor: M(nm.valorRaw), nAbat: M(nm.abatRaw),
-        onData:(e)=>setNm("data", e.target.value), onHist:(e)=>setNm("hist", e.target.value),
-        onValor:(e)=>setNm("valorRaw", parseMoedaInput(e.target.value)), onAbat:(e)=>setNm("abatRaw", parseMoedaInput(e.target.value)),
-        onAdd:()=>this.fcAddMov(c.id),
-        onExcluir:()=>{ if(window.confirm("Excluir o controle \"" + c.nome + "\" e todos os lançamentos dele?")){ movs.filter(m=>m.controleId===c.id).forEach(m=>this.fcExcluir("movs", m.id)); this.fcExcluir("controles", c.id); } }};
-    });
-    Object.assign(out, {fcCtrls, fcCtrlVazio: fcCtrls.length===0, fcCtrlSaldo: M(saldoGeral), fcCtrlQtd: fcCtrls.length + (fcCtrls.length===1 ? " controle" : " controles"),
-      fcNc: s.fcNc, onFcNc:(e)=>this.setState({fcNc:e.target.value}), onFcAddCtrl:()=>this.fcAddControle(), onFcNcKey:(e)=>{ if(e.key==="Enter") this.fcAddControle(); }});
-    return out;
+    return {isFc:true, fcPronto:true, fcAviso:s.fcAviso||"", fcTemAviso:!!s.fcAviso, fecharFcAviso:()=>this.setState({fcAviso:""}),
+      fcPlanilhas: planilhas, fcSemPlanilha: !planilhas.length,
+      fcNovaAberta: !!s.fcNovaAberta, onFcNova:()=>this.setState({fcNovaAberta:!s.fcNovaAberta}),
+      fcModelos: Object.entries(FC_MODELOS).map(([id,m])=>({label:m.label, desc:m.desc, onClick:()=>this.fcPlNova(id)}))};
   }
-  // ---------- Conferência: Faturas Cartão de Crédito (js/conferencia-cartao.js) ----------
-  // A leitura dos PDFs é toda no navegador: faturas e relatório não vão ao servidor.
   ccAddArquivos(tipo, e){
     const files = [...((e.target && e.target.files) || [])].filter(f=>/\.pdf$/i.test(f.name) || f.type==="application/pdf");
     e.target.value = "";
