@@ -8,6 +8,7 @@
 <script src="js/util.js"></script>
 <script src="js/conferencia-fatura.js"></script>
 <script src="js/conferencia-cartao.js"></script>
+<script src="js/fluxo-caixa.js"></script>
 <script src="js/importacao.js"></script>
 <script src="js/modulos.js"></script>
 <script src="js/competencia.js"></script>
@@ -48,6 +49,7 @@
       <div style="text-align:center;margin-bottom:22px;">
         <div style="font-size:26px;font-weight:800;color:#1D4ED8;letter-spacing:-.02em;">Grupo Azul</div>
         <div style="font-size:13.5px;color:#6B7280;margin-top:4px;">Sistema integrado · Financeiro, Help desk e RH</div>
+        <div style="font-size:12px;color:#98A2B3;margin-top:4px;font-variant-numeric:tabular-nums;">Versão {{ versaoTexto }}</div>
       </div>
       <div style="background:#fff;border:1px solid #E3E8F3;border-radius:14px;box-shadow:0 1px 3px rgba(16,24,40,.06);padding:26px 28px;">
         <div style="font-size:16px;font-weight:700;color:#111827;">Acesso</div>
@@ -64,7 +66,21 @@
         </sc-if>
         <button sc-camel-on-click="{{ onAuthSubmit }}" style="width:100%;background:#1D4ED8;color:#fff;border:none;padding:11px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">{{ authSubmitLabel }}</button>
       </div>
+      <sc-if value="{{ podePrevia }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:14px;background:#F7F9FC;border:1px dashed #BFD0FB;border-radius:12px;padding:14px 16px;font-size:12.5px;color:#475569;line-height:1.5;">
+          <div style="font-weight:700;color:#111827;margin-bottom:2px;">Conferindo alterações antes do deploy?</div>
+          Fora do servidor (como na janela do Claude) o login não funciona. A pré-visualização entra como administrador, sem servidor: os dados ficam só neste navegador e nada vai para o sistema real.
+          <button sc-camel-on-click="{{ onAbrirPrevia }}" style="display:block;margin-top:10px;background:#fff;border:1px solid #BFD0FB;color:#1D4ED8;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Abrir pré-visualização</button>
+        </div>
+      </sc-if>
     </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ emPrevia }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;bottom:14px;right:14px;z-index:60;display:flex;align-items:center;gap:10px;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:8px 10px 8px 14px;font-family:Manrope,system-ui,sans-serif;font-size:12.5px;box-shadow:0 6px 16px rgba(16,24,40,.12);">
+    <span><strong>Pré-visualização</strong> · sem servidor, dados só neste navegador</span>
+    <button sc-camel-on-click="{{ onSairPrevia }}" style="background:#fff;border:1px solid #FDE68A;color:#92400E;padding:5px 10px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">Sair</button>
   </div>
 </sc-if>
 
@@ -75,7 +91,7 @@
         <div style="width:34px;height:34px;border-radius:9px;background:#1D4ED8;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0;">GA</div>
         <div style="min-width:0;">
           <div style="font-weight:800;font-size:14.5px;letter-spacing:-.01em;">Grupo Azul</div>
-          <div style="font-size:11.5px;color:#64748B;">Sistema integrado</div>
+          <div style="font-size:11.5px;color:#64748B;">Sistema integrado · <span title="Versão {{ versaoTexto }}" style="font-variant-numeric:tabular-nums;white-space:nowrap;">{{ versaoCurta }}</span></div>
         </div>
       </div>
       <nav style="padding:6px 10px 12px;display:flex;flex-direction:column;gap:2px;flex:1;">
@@ -85,8 +101,9 @@
           <span style="font-size:11px;font-weight:800;color:#64748B;letter-spacing:.06em;text-transform:uppercase;">Financeiro</span>
         </div>
         <sc-for list="{{ navFin }}" as="n" hint-placeholder-count="2">
-          <button sc-camel-on-click="{{ n.onClick }}" style="display:flex;align-items:center;gap:8px;border:none;background:{{ n.bg }};color:{{ n.fg }};padding:8px 12px;border-radius:8px;font-size:13px;font-weight:{{ n.fw }};cursor:pointer;text-align:left;" style-hover="background:#F1F5FF;color:#1D4ED8;">
+          <button sc-camel-on-click="{{ n.onClick }}" aria-expanded="{{ n.aberto }}" style="display:flex;align-items:center;gap:8px;border:none;background:{{ n.bg }};color:{{ n.fg }};padding:8px 12px 8px {{ n.pad }};border-radius:8px;font-size:13px;font-weight:{{ n.fw }};cursor:pointer;text-align:left;" style-hover="background:#F1F5FF;color:#1D4ED8;">
             <span style="flex:1;min-width:0;">{{ n.label }}</span>
+            <span aria-hidden="true" style="font-size:11px;color:#94A3B8;">{{ n.seta }}</span>
             <sc-if value="{{ n.badge }}" hint-placeholder-val="{{ false }}"><span style="min-width:18px;padding:1px 6px;border-radius:999px;background:#B42318;color:#fff;font-size:10.5px;line-height:16px;text-align:center;">{{ n.badge }}</span></sc-if>
           </button>
         </sc-for>
@@ -576,7 +593,7 @@
                 <input type="number" min="0" max="{{ fdNd }}" value="{{ fdApur }}" sc-camel-on-change="{{ fdOnApur }}" disabled="{{ fdLeitura }}" style="width:110px;border:1px solid #D8DFEE;border-radius:8px;padding:8px 10px;font-size:13.5px;background:#fff;color:#111827;">
               </label>
               <sc-if value="{{ fdPode }}" hint-placeholder-val="{{ false }}">
-                <label style="background:#1D4ED8;color:#fff;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;" style-hover="background:#1E40AF;">Importar planilha<input type="file" accept=".xlsx,.xls,.xlsm" sc-camel-on-change="{{ fdOnImportar }}" style="display:none;"></label>
+                <label style="background:#1D4ED8;color:#fff;padding:9px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;" style-hover="background:#1E40AF;">Importar planilha ou PDF<input type="file" accept=".xlsx,.xls,.xlsm,.pdf" sc-camel-on-change="{{ fdOnImportar }}" style="display:none;"></label>
               </sc-if>
               <sc-if value="{{ fdPodeImagem }}" hint-placeholder-val="{{ false }}">
                 <button sc-camel-on-click="{{ fdGerarImagem }}" style="background:#fff;border:1px solid #BFD0FB;color:#1D4ED8;padding:8px 13px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;" style-hover="background:#F5F8FF;">Gerar imagem</button>
@@ -665,15 +682,242 @@
               <tfoot>
                 <sc-for list="{{ fdRodape }}" as="r" hint-placeholder-count="2">
                   <tr style="background:{{ r.bg }};">
-                    <td style="position:sticky;left:0;z-index:1;background:{{ r.bg }};padding:8px 12px;border-top:1px solid #E3E8F3;white-space:nowrap;font-weight:800;color:{{ r.cor }};">{{ r.label }}</td>
+                    <td style="position:sticky;left:0;z-index:1;background:{{ r.bg }};padding:{{ r.pad }};border-top:{{ r.borda }};white-space:nowrap;font-weight:800;font-size:{{ r.tam }};color:{{ r.cor }};">{{ r.label }}</td>
                     <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="6">
-                      <td style="padding:8px 10px;border-left:{{ c.borda }};border-top:1px solid #E3E8F3;text-align:right;white-space:nowrap;font-weight:800;color:{{ r.cor }};">{{ c.txt }}</td>
+                      <td style="padding:{{ r.pad }};border-left:{{ c.borda }};border-top:{{ r.borda }};text-align:right;white-space:nowrap;font-weight:800;font-size:{{ r.tam }};color:{{ r.cor }};font-variant-numeric:tabular-nums;">{{ c.txt }}</td>
                     </sc-for>
                   </tr>
                 </sc-for>
               </tfoot>
             </table>
           </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isFc }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#fff;border:1px solid #E3E8F3;border-radius:14px;box-shadow:0 1px 3px rgba(16,24,40,.06);padding:18px 22px;display:flex;flex-direction:column;gap:16px;">
+          <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
+            <div style="margin-right:auto;">
+              <div style="display:flex;align-items:center;gap:8px;"><div style="font-size:15px;font-weight:700;">Fluxo de Caixa</div><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:#EEF2FF;color:#1D4ED8;">Só administradores</span></div>
+              <div style="font-size:12px;color:#8A94A6;margin-top:2px;">Despesas do dia, aportes com correção e controle de empréstimos e cartões. Não entra nos números do DRE.</div>
+            </div>
+            <sc-if value="{{ fcPronto }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;background:#EEF2F8;border-radius:9px;padding:3px;gap:2px;">
+                <sc-for list="{{ fcTabs }}" as="t" hint-placeholder-count="3">
+                  <button sc-camel-on-click="{{ t.onClick }}" style="border:none;padding:7px 14px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;background:{{ t.bg }};color:{{ t.fg }};box-shadow:{{ t.sombra }};">{{ t.label }}</button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+          <sc-if value="{{ fcTemAviso }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:12.5px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 12px;">{{ fcAviso }}</div>
+          </sc-if>
+
+          <sc-if value="{{ isFcDesp }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <div style="display:flex;background:#EEF2F8;border-radius:9px;padding:3px;gap:2px;">
+                <sc-for list="{{ fcFiltros }}" as="f" hint-placeholder-count="4">
+                  <button sc-camel-on-click="{{ f.onClick }}" style="border:none;padding:6px 12px;border-radius:7px;font-size:12.5px;font-weight:700;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }};box-shadow:{{ f.sombra }};">{{ f.label }}</button>
+                </sc-for>
+              </div>
+              <sc-if value="{{ fcMostraDia }}" hint-placeholder-val="{{ false }}">
+                <input type="date" value="{{ fcDia }}" sc-camel-on-change="{{ onFcDia }}" aria-label="Dia" style="padding:7px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;">
+              </sc-if>
+              <sc-if value="{{ fcMostraMes }}" hint-placeholder-val="{{ false }}">
+                <input type="month" value="{{ fcMes }}" sc-camel-on-change="{{ onFcMes }}" aria-label="Mês" style="padding:7px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;">
+              </sc-if>
+              <sc-raw-select value="{{ fcEmp }}" sc-camel-on-change="{{ onFcEmp }}" aria-label="Empresa" style="padding:7px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;background:#fff;">
+                <sc-for list="{{ fcEmpOpts }}" as="o" hint-placeholder-count="4"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
+              </sc-raw-select>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
+              <div style="background:#FEF3F2;border:1px solid #FECDCA;border-radius:12px;padding:12px 14px;">
+                <div style="font-size:11.5px;font-weight:700;color:#B42318;text-transform:uppercase;letter-spacing:.04em;">Total das despesas</div>
+                <div style="font-size:20px;font-weight:800;color:#B42318;margin-top:4px;font-variant-numeric:tabular-nums;">{{ fcTotal }}</div>
+                <div style="font-size:11.5px;color:#B42318;">{{ fcQtd }} · pagas {{ fcPagas }}</div>
+              </div>
+              <sc-if value="{{ fcTemSaldo }}" hint-placeholder-val="{{ true }}">
+                <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;">
+                  <label for="fc-saldo" style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">{{ fcSaldoLabel }}</label>
+                  <input id="fc-saldo" type="text" sc-camel-input-mode="numeric" value="{{ fcSaldoInput }}" sc-camel-on-change="{{ onFcSaldo }}" sc-camel-on-blur="{{ onFcSaldoBlur }}" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;font-size:18px;font-weight:800;color:#111827;border:1px solid #D8DFEE;border-radius:8px;padding:5px 8px;background:#fff;font-variant-numeric:tabular-nums;">
+                </div>
+                <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;">
+                  <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">{{ fcFinalLabel }}</div>
+                  <div style="font-size:20px;font-weight:800;color:{{ fcFinalCor }};margin-top:4px;font-variant-numeric:tabular-nums;">{{ fcFinal }}</div>
+                </div>
+              </sc-if>
+              <sc-for list="{{ fcPorEmp }}" as="e" hint-placeholder-count="2">
+                <div style="background:#fff;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;">
+                  <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">{{ e.nome }}</div>
+                  <div style="font-size:17px;font-weight:800;color:#111827;margin-top:4px;font-variant-numeric:tabular-nums;">{{ e.valor }}</div>
+                  <div style="font-size:11.5px;color:#667085;">{{ e.qtd }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px;border:1px dashed #BFD0FB;border-radius:12px;background:#F8FAFF;">
+              <input type="text" value="{{ fcNdHist }}" sc-camel-on-change="{{ onFcNdHist }}" sc-camel-on-key-down="{{ onFcNdKey }}" placeholder="Histórico (ex.: FORNECEDOR - CELPE)" aria-label="Histórico" style="flex:2 1 240px;padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;box-sizing:border-box;">
+              <input type="text" sc-camel-input-mode="numeric" value="{{ fcNdValor }}" sc-camel-on-change="{{ onFcNdValor }}" sc-camel-on-key-down="{{ onFcNdKey }}" aria-label="Valor" style="width:130px;text-align:right;padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;box-sizing:border-box;">
+              <input type="date" value="{{ fcNdVenc }}" sc-camel-on-change="{{ onFcNdVenc }}" aria-label="Vencimento" style="padding:7px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;">
+              <sc-raw-select value="{{ fcNdEmp }}" sc-camel-on-change="{{ onFcNdEmp }}" aria-label="Empresa da despesa" style="padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;background:#fff;">
+                <sc-for list="{{ fcNdEmpOpts }}" as="o" hint-placeholder-count="3"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
+              </sc-raw-select>
+              <button sc-camel-on-click="{{ onFcAddDesp }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Lançar despesa</button>
+            </div>
+            <div style="border:1px solid #E3E8F3;border-radius:12px;overflow:auto;">
+              <table style="border-collapse:collapse;width:100%;font-size:12.5px;">
+                <thead><tr>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 10px;border-bottom:1px solid #E3E8F3;">Histórico</th>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:right;padding:9px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;">Valor</th>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;">Vencimento</th>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 10px;border-bottom:1px solid #E3E8F3;">Empresa</th>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 10px;border-bottom:1px solid #E3E8F3;">Situação</th>
+                  <th style="background:#F3F6FB;border-bottom:1px solid #E3E8F3;width:30px;"></th>
+                </tr></thead>
+                <tbody>
+                  <sc-for list="{{ fcLinhas }}" as="r" hint-placeholder-count="4">
+                    <tr style="background:{{ r.bg }};">
+                      <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#111827;">{{ r.hist }}</td>
+                      <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:#111827;font-weight:600;">{{ r.valor }}</td>
+                      <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;color:{{ r.vencCor }};font-weight:{{ r.vencPeso }};">{{ r.venc }}</td>
+                      <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#374151;">{{ r.empresa }}</td>
+                      <td style="padding:5px 10px;border-bottom:1px solid #F0F2F7;"><button sc-camel-on-click="{{ r.onPago }}" title="Clique para alternar entre paga e em aberto" style="border:none;font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px;cursor:pointer;background:{{ r.pagoBg }};color:{{ r.pagoFg }};">{{ r.pagoLabel }}</button></td>
+                      <td style="padding:5px 6px;border-bottom:1px solid #F0F2F7;"><button sc-camel-on-click="{{ r.onExcluir }}" aria-label="Excluir despesa" style="border:none;background:none;color:#DC2626;font-size:14px;cursor:pointer;">✕</button></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+              <sc-if value="{{ fcVazio }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:22px;text-align:center;font-size:13px;color:#8A94A6;">Nenhuma despesa neste filtro.</div>
+              </sc-if>
+              <div style="display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border-top:2px solid #E3E8F3;background:#F7F9FC;font-size:13px;font-weight:800;">
+                <span>Total · {{ fcQtd }}</span><span style="color:#B42318;font-variant-numeric:tabular-nums;">{{ fcTotal }}</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:#667085;">
+              <span style="font-weight:700;color:#374151;">Empresas:</span>
+              <sc-for list="{{ fcEmpChips }}" as="c" hint-placeholder-count="3">
+                <span style="display:inline-flex;align-items:center;gap:4px;background:#F2F4F7;border-radius:999px;padding:3px 4px 3px 10px;font-weight:600;color:#374151;">{{ c.nome }}<button sc-camel-on-click="{{ c.onRemover }}" aria-label="Remover empresa {{ c.nome }}" style="border:none;background:none;color:#98A2B3;cursor:pointer;font-size:12px;">✕</button></span>
+              </sc-for>
+              <input type="text" value="{{ fcNovaEmp }}" sc-camel-on-change="{{ onFcNovaEmp }}" placeholder="Nova empresa" aria-label="Nova empresa" style="width:140px;padding:5px 9px;border:1px dashed #D8DFEE;border-radius:7px;font-size:12.5px;">
+              <button sc-camel-on-click="{{ onFcAddEmp }}" style="background:#fff;border:1px solid #D8DFEE;color:#374151;padding:5px 10px;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer;">Adicionar</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isFcAport }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#6B7280;">Data de referência<input type="date" value="{{ fcRef }}" sc-camel-on-change="{{ onFcRef }}" style="padding:7px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#6B7280;">Correção (% ao dia)<input type="text" value="{{ fcTaxa }}" sc-camel-on-change="{{ onFcTaxa }}" sc-camel-on-blur="{{ onFcTaxaBlur }}" style="width:90px;text-align:right;padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#6B7280;">Investidor
+                <sc-raw-select value="{{ fcInv }}" sc-camel-on-change="{{ onFcInv }}" style="padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;background:#fff;">
+                  <sc-for list="{{ fcInvOpts }}" as="o" hint-placeholder-count="2"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
+                </sc-raw-select></label>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
+              <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;"><div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Valor aportado</div><div style="font-size:20px;font-weight:800;color:#111827;margin-top:4px;font-variant-numeric:tabular-nums;">{{ fcApTotValor }}</div></div>
+              <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;"><div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Correção</div><div style="font-size:20px;font-weight:800;color:#B45309;margin-top:4px;font-variant-numeric:tabular-nums;">{{ fcApTotCorr }}</div></div>
+              <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;"><div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Abatimentos</div><div style="font-size:20px;font-weight:800;color:#027A48;margin-top:4px;font-variant-numeric:tabular-nums;">{{ fcApTotAbat }}</div></div>
+              <div style="background:#EEF2FF;border:1px solid #C7D5FB;border-radius:12px;padding:12px 14px;"><div style="font-size:11.5px;font-weight:700;color:#1D4ED8;text-transform:uppercase;letter-spacing:.04em;">{{ fcApTotalLabel }}</div><div style="font-size:20px;font-weight:800;color:#1D4ED8;margin-top:4px;font-variant-numeric:tabular-nums;">{{ fcApTotal }}</div></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:12px;border:1px dashed #BFD0FB;border-radius:12px;background:#F8FAFF;">
+              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;">Nº<input type="text" value="{{ fcNaNum }}" sc-camel-on-change="{{ onFcNaNum }}" placeholder="auto" style="width:60px;padding:7px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
+              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;">Investidor<input type="text" value="{{ fcNaInv }}" sc-camel-on-change="{{ onFcNaInv }}" style="width:110px;padding:7px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
+              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;flex:2 1 200px;">Histórico<input type="text" value="{{ fcNaHist }}" sc-camel-on-change="{{ onFcNaHist }}" placeholder="Ex.: DEV APORTE 19/11/2026" style="padding:7px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
+              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;">Valor do aporte<input type="text" sc-camel-input-mode="numeric" value="{{ fcNaValor }}" sc-camel-on-change="{{ onFcNaValor }}" style="width:120px;text-align:right;padding:7px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
+              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;">Data<input type="date" value="{{ fcNaData }}" sc-camel-on-change="{{ onFcNaData }}" style="padding:6px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
+              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;">Abatimento<input type="text" sc-camel-input-mode="numeric" value="{{ fcNaAbat }}" sc-camel-on-change="{{ onFcNaAbat }}" style="width:110px;text-align:right;padding:7px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
+              <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6B7280;">Quitado em<input type="date" value="{{ fcNaQuit }}" sc-camel-on-change="{{ onFcNaQuit }}" style="padding:6px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;"></label>
+              <button sc-camel-on-click="{{ onFcAddAporte }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Lançar aporte</button>
+            </div>
+            <div style="border:1px solid #E3E8F3;border-radius:12px;overflow:auto;">
+              <table style="border-collapse:collapse;width:100%;font-size:12.5px;">
+                <thead><tr>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Nº</th>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Histórico</th>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:right;padding:9px 8px;border-bottom:1px solid #E3E8F3;white-space:nowrap;">Valor aporte</th>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:right;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Abatimento</th>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Data</th>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:left;padding:9px 8px;border-bottom:1px solid #E3E8F3;white-space:nowrap;">Quitado em</th>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:right;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Dias</th>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:right;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Correção</th>
+                  <th style="background:#F3F6FB;color:#475569;font-weight:700;text-align:right;padding:9px 8px;border-bottom:1px solid #E3E8F3;">Total</th>
+                  <th style="background:#F3F6FB;border-bottom:1px solid #E3E8F3;width:28px;"></th>
+                </tr></thead>
+                <tbody>
+                  <sc-for list="{{ fcApLinhas }}" as="a" hint-placeholder-count="4">
+                    <tr style="background:{{ a.bg }};">
+                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;color:#374151;">{{ a.num }}</td>
+                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;color:#111827;">{{ a.inv }} · {{ a.hist }}</td>
+                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;">{{ a.valor }}</td>
+                      <td style="padding:4px 6px;border-bottom:1px solid #F0F2F7;"><input type="text" sc-camel-input-mode="numeric" value="{{ a.abat }}" sc-camel-on-change="{{ a.onAbat }}" sc-camel-on-blur="{{ a.onAbatBlur }}" aria-label="Abatimento" style="width:105px;text-align:right;padding:5px 7px;border:1px solid #E3E8F3;border-radius:6px;font-size:12.5px;background:transparent;"></td>
+                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;white-space:nowrap;">{{ a.data }}</td>
+                      <td style="padding:4px 6px;border-bottom:1px solid #F0F2F7;"><input type="date" value="{{ a.quit }}" sc-camel-on-change="{{ a.onQuit }}" aria-label="Quitado em" style="padding:4px 6px;border:1px solid #E3E8F3;border-radius:6px;font-size:12px;background:transparent;"></td>
+                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;text-align:right;font-variant-numeric:tabular-nums;color:#667085;">{{ a.dias }}</td>
+                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:#B45309;">{{ a.correcao }}</td>
+                      <td style="padding:6px 8px;border-bottom:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:700;color:{{ a.totalCor }};">{{ a.total }}</td>
+                      <td style="padding:4px 6px;border-bottom:1px solid #F0F2F7;"><button sc-camel-on-click="{{ a.onExcluir }}" aria-label="Excluir aporte" style="border:none;background:none;color:#DC2626;font-size:14px;cursor:pointer;">✕</button></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+              <sc-if value="{{ fcApVazio }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:22px;text-align:center;font-size:13px;color:#8A94A6;">Nenhum aporte lançado.</div>
+              </sc-if>
+              <div style="display:flex;justify-content:flex-end;gap:22px;flex-wrap:wrap;padding:9px 10px;border-top:2px solid #E3E8F3;background:#F7F9FC;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;">
+                <span>Aportado {{ fcApTotValor }}</span><span style="color:#027A48;">Abatido {{ fcApTotAbat }}</span><span style="color:#B45309;">Correção {{ fcApTotCorr }}</span><span style="color:#1D4ED8;">Total {{ fcApTotal }}</span>
+              </div>
+            </div>
+            <div style="font-size:12px;color:#667085;line-height:1.5;max-width:860px;">Correção simples: valor × taxa ao dia × dias. Os dias contam da data do aporte até a data de quitação (se preenchida) ou até a data de referência. Total = valor + correção − abatimento. Abatimento e quitação podem ser alterados direto na tabela.</div>
+          </sc-if>
+
+          <sc-if value="{{ isFcCtrl }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <input type="text" value="{{ fcNc }}" sc-camel-on-change="{{ onFcNc }}" sc-camel-on-key-down="{{ onFcNcKey }}" placeholder="Novo controle (ex.: DANIEL - CARTÃO ITAÚ)" aria-label="Nome do novo controle" style="flex:1 1 260px;max-width:380px;padding:8px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;">
+              <button sc-camel-on-click="{{ onFcAddCtrl }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Criar controle</button>
+              <span style="margin-left:auto;font-size:13px;color:#374151;">{{ fcCtrlQtd }} · saldo total <strong style="font-variant-numeric:tabular-nums;">{{ fcCtrlSaldo }}</strong></span>
+            </div>
+            <sc-if value="{{ fcCtrlVazio }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:22px;text-align:center;font-size:13px;color:#8A94A6;border:1px dashed #E3E8F3;border-radius:12px;">Crie um controle para cada empréstimo, cartão ou pessoa (ex.: PAGAMENTOS - EDMUNDO, DEVOLUÇÃO, CARTÃO - ALYNNE).</div>
+            </sc-if>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px;">
+              <sc-for list="{{ fcCtrls }}" as="c" hint-placeholder-count="2">
+                <div style="border:1px solid #E3E8F3;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;">
+                  <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#F7F9FC;border-bottom:1px solid #E3E8F3;">
+                    <div style="font-size:13px;font-weight:800;color:#111827;margin-right:auto;">{{ c.nome }}</div>
+                    <div style="font-size:12px;color:#667085;">Saldo</div><div style="font-size:15px;font-weight:800;color:{{ c.saldoCor }};font-variant-numeric:tabular-nums;">{{ c.saldo }}</div>
+                    <button sc-camel-on-click="{{ c.onExcluir }}" aria-label="Excluir controle {{ c.nome }}" style="border:none;background:none;color:#98A2B3;font-size:13px;cursor:pointer;">✕</button>
+                  </div>
+                  <table style="border-collapse:collapse;width:100%;font-size:12.5px;">
+                    <thead><tr>
+                      <th style="text-align:left;padding:6px 10px;color:#8A94A6;font-size:11px;font-weight:700;">Data</th>
+                      <th style="text-align:left;padding:6px 10px;color:#8A94A6;font-size:11px;font-weight:700;">Histórico</th>
+                      <th style="text-align:right;padding:6px 10px;color:#8A94A6;font-size:11px;font-weight:700;">Valor</th>
+                      <th style="text-align:right;padding:6px 10px;color:#8A94A6;font-size:11px;font-weight:700;">Abatimento</th>
+                      <th style="text-align:right;padding:6px 10px;color:#8A94A6;font-size:11px;font-weight:700;">Saldo</th>
+                      <th style="width:24px;"></th>
+                    </tr></thead>
+                    <tbody>
+                      <sc-for list="{{ c.linhas }}" as="m" hint-placeholder-count="2">
+                        <tr>
+                          <td style="padding:5px 10px;border-top:1px solid #F0F2F7;white-space:nowrap;">{{ m.data }}</td>
+                          <td style="padding:5px 10px;border-top:1px solid #F0F2F7;">{{ m.hist }}</td>
+                          <td style="padding:5px 10px;border-top:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;">{{ m.valor }}</td>
+                          <td style="padding:5px 10px;border-top:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:#027A48;">{{ m.abat }}</td>
+                          <td style="padding:5px 10px;border-top:1px solid #F0F2F7;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:700;">{{ m.saldo }}</td>
+                          <td style="padding:3px 4px;border-top:1px solid #F0F2F7;"><button sc-camel-on-click="{{ m.onExcluir }}" aria-label="Excluir lançamento" style="border:none;background:none;color:#DC2626;font-size:12px;cursor:pointer;">✕</button></td>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:8px 10px;border-top:1px solid #E3E8F3;background:#FCFDFF;margin-top:auto;">
+                    <input type="date" value="{{ c.nData }}" sc-camel-on-change="{{ c.onData }}" aria-label="Data" style="padding:5px 6px;border:1px solid #D8DFEE;border-radius:6px;font-size:12px;">
+                    <input type="text" value="{{ c.nHist }}" sc-camel-on-change="{{ c.onHist }}" placeholder="Histórico" aria-label="Histórico" style="flex:1 1 90px;min-width:80px;padding:6px 8px;border:1px solid #D8DFEE;border-radius:6px;font-size:12px;">
+                    <input type="text" sc-camel-input-mode="numeric" value="{{ c.nValor }}" sc-camel-on-change="{{ c.onValor }}" aria-label="Valor" title="Valor" style="width:92px;text-align:right;padding:6px 8px;border:1px solid #D8DFEE;border-radius:6px;font-size:12px;">
+                    <input type="text" sc-camel-input-mode="numeric" value="{{ c.nAbat }}" sc-camel-on-change="{{ c.onAbat }}" aria-label="Abatimento" title="Abatimento" style="width:92px;text-align:right;padding:6px 8px;border:1px solid #D8DFEE;border-radius:6px;font-size:12px;">
+                    <button sc-camel-on-click="{{ c.onAdd }}" style="background:#fff;border:1px solid #BFD0FB;color:#1D4ED8;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">Lançar</button>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
         </div>
       </sc-if>
       <sc-if value="{{ isConf }}" hint-placeholder-val="{{ false }}">
@@ -868,6 +1112,30 @@
                 </div>
                 <div style="font-size:12px;color:#667085;line-height:1.5;max-width:860px;text-wrap:pretty;">“Leitura” confere se a fatura anterior mais os lançamentos lidos dá o total da fatura, ou seja, se nenhum lançamento ficou de fora. Juros, multas e IOF estão em colunas próprias para comparar os cartões.</div>
               </div>
+              <sc-if value="{{ ccTemProj }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid #BFD0FB;background:#F5F8FF;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+                  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <div style="margin-right:auto;min-width:0;">
+                      <div style="font-size:13px;font-weight:700;color:#111827;">Projeção de parcelas</div>
+                      <div style="font-size:12px;color:#667085;margin-top:2px;text-wrap:pretty;">As compras parceladas da agência destas faturas entram sozinhas na projeção. Confira o nome do cartão e o vencimento.</div>
+                    </div>
+                    <button sc-camel-on-click="{{ ccIrProjecao }}" style="background:#fff;border:1px solid #BFD0FB;color:#1D4ED8;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Abrir projeção ›</button>
+                  </div>
+                  <sc-for list="{{ ccProj }}" as="p" hint-placeholder-count="2">
+                    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:#fff;border:1px solid #E3E8F3;border-radius:10px;padding:9px 12px;">
+                      <label for="{{ p.idA }}" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">Nome do cartão</label>
+                      <input id="{{ p.idA }}" type="text" value="{{ p.apelido }}" sc-camel-on-change="{{ p.onApelido }}" autocomplete="off" title="Nome do cartão na projeção" style="flex:1 1 180px;min-width:0;box-sizing:border-box;padding:7px 10px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;font-weight:700;color:#111827;">
+                      <label for="{{ p.idV }}" style="font-size:12px;color:#667085;">Vencimento</label>
+                      <input id="{{ p.idV }}" type="date" value="{{ p.vencimento }}" sc-camel-on-change="{{ p.onVenc }}" style="box-sizing:border-box;padding:6px 8px;border:1px solid #D8DFEE;border-radius:8px;font-size:13px;color:#111827;">
+                      <span style="flex:1 1 220px;font-size:12.5px;color:#374151;font-variant-numeric:tabular-nums;">{{ p.resumo }}</span>
+                      <sc-if value="{{ p.temPend }}" hint-placeholder-val="{{ false }}">
+                        <span style="font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;background:#FEF0C7;color:#93370D;white-space:nowrap;">{{ p.pend }}</span>
+                      </sc-if>
+                      <span style="font-size:12px;font-weight:700;color:{{ p.statusCor }};white-space:nowrap;">{{ p.status }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;">
                 <sc-for list="{{ ccChips }}" as="ch" hint-placeholder-count="7">
                   <button sc-camel-on-click="{{ ch.onClick }}" aria-pressed="{{ ch.ativo }}" style="text-align:left;border:1px solid {{ ch.borda }};background:{{ ch.fundo }};border-radius:11px;padding:9px 12px;cursor:pointer;opacity:{{ ch.opac }};">
@@ -928,7 +1196,7 @@
           <sc-if value="{{ isFaturas }}" hint-placeholder-val="{{ false }}">
           <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:14px;">
             <div style="flex:1 1 260px;min-width:0;">
-              <div style="font-size:15px;font-weight:700;">Controle de Faturas</div>
+              <div style="font-size:15px;font-weight:700;">Faturas · {{ fatSubTitulo }}</div>
               <div style="font-size:12px;color:#8A94A6;margin-top:2px;">Lançamento, conferência e apuração por competência. Não entra nos números do DRE.</div>
             </div>
             <sc-if value="{{ fatMostraComp }}" hint-placeholder-val="{{ true }}">
@@ -939,15 +1207,10 @@
               <button sc-camel-on-click="{{ fatCompTodas }}" style="{{ fatCompTodasStyle }}">Todas</button></div>
             </sc-if>
           </div>
-          <div style="display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid #E3E8F3;margin-bottom:18px;">
-            <sc-for list="{{ fatTabs }}" as="t" hint-placeholder-count="5">
-              <button sc-camel-on-click="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}<sc-if value="{{ t.badge }}" hint-placeholder-val="{{ false }}"><span style="{{ t.badgeStyle }}">{{ t.badge }}</span></sc-if></button>
-            </sc-for>
-          </div>
           </sc-if>
           <sc-if value="{{ isFatAdm }}" hint-placeholder-val="{{ false }}">
           <div style="font-size:15px;font-weight:700;margin-bottom:2px;">Contas Administrativas</div>
-          <div style="font-size:12px;color:#8A94A6;margin-bottom:14px;">Aluguel, energia, internet e demais contas fixas por loja. Não entra nos números do DRE.</div>
+          <div style="font-size:12px;color:#8A94A6;margin-bottom:14px;">Aluguel, energia, internet e demais contas fixas por loja. Cada conta lançada entra no DRE da loja, na competência do vencimento.</div>
           </sc-if>
           <sc-if value="{{ faturaErro }}" hint-placeholder-val="{{ false }}">
             <div style="font-size:12.5px;color:#B42318;background:#FEF3F2;border:1px solid #FEE4E2;border-radius:8px;padding:8px 12px;margin-bottom:14px;">{{ faturaErro }}</div>
@@ -1192,6 +1455,201 @@
           </sc-if>
           </sc-if>
 
+          <sc-if value="{{ isFatProj }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:16px;">
+            <sc-if value="{{ cpTemAviso }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:12.5px;color:#B54708;background:#FFFAEB;border:1px solid #FEDF89;border-radius:8px;padding:8px 12px;">{{ cpAviso }}</div>
+            </sc-if>
+            <sc-if value="{{ cpVazio }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:36px 16px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;">
+                <div style="font-size:14px;font-weight:700;color:#111827;">Nenhuma fatura na projeção ainda</div>
+                <div style="font-size:13px;color:#667085;max-width:520px;line-height:1.5;text-wrap:pretty;">Processe as faturas em Conferência de fatura › Faturas Cartão de Crédito. As compras parceladas da agência entram aqui sozinhas, mês a mês, até a última parcela.</div>
+                <button sc-camel-on-click="{{ cpIrConferencia }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Ir para a conferência de cartão</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ cpTem }}" hint-placeholder-val="{{ true }}">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+                <sc-for list="{{ cpKpis }}" as="k" hint-placeholder-count="4">
+                  <div style="background:#F7F9FC;border:1px solid #E3E8F3;border-radius:12px;padding:12px 14px;min-width:0;">
+                    <div style="font-size:11.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.04em;">{{ k.label }}</div>
+                    <div style="font-size:20px;font-weight:800;color:{{ k.cor }};margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap;">{{ k.valor }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
+                <div style="margin-right:auto;min-width:0;">
+                  <div style="font-size:13px;font-weight:700;color:#111827;">Parcelas a vencer por mês</div>
+                  <div style="font-size:12px;color:#667085;margin-top:2px;text-wrap:pretty;">Só compras da agência. Cada cartão usa a última fatura importada; o mês é o da fatura em que a parcela cai.</div>
+                </div>
+                <button sc-camel-on-click="{{ cpExportar }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Exportar Excel</button>
+              </div>
+              <div style="border:1px solid #E3E8F3;border-radius:12px;overflow:auto;">
+                <table style="border-collapse:collapse;width:100%;font-size:12.5px;">
+                  <thead><tr>
+                    <sc-for list="{{ cpCab }}" as="h" hint-placeholder-count="8">
+                      <th style="background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:{{ h.al }};">{{ h.t }}</th>
+                    </sc-for>
+                  </tr></thead>
+                  <tbody>
+                    <sc-for list="{{ cpLinhas }}" as="l" hint-placeholder-count="3">
+                      <tr>
+                        <sc-for list="{{ l.cel }}" as="c" hint-placeholder-count="8">
+                          <td style="padding:8px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;text-align:{{ c.al }};color:{{ c.cor }};font-weight:{{ c.peso }};font-variant-numeric:tabular-nums;">{{ c.t }}</td>
+                        </sc-for>
+                      </tr>
+                    </sc-for>
+                  </tbody>
+                  <tfoot><tr>
+                    <sc-for list="{{ cpRodape }}" as="c" hint-placeholder-count="8">
+                      <td style="padding:11px 10px;background:#111827;color:#fff;font-weight:800;font-size:13.5px;white-space:nowrap;text-align:{{ c.al }};font-variant-numeric:tabular-nums;">{{ c.t }}</td>
+                    </sc-for>
+                  </tr></tfoot>
+                </table>
+              </div>
+              <sc-if value="{{ cpTemPend }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px solid #FEDF89;background:#FFFCF5;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+                  <div>
+                    <div style="font-size:13px;font-weight:700;color:#93370D;">Revisar: é compra da agência?</div>
+                    <div style="font-size:12px;color:#667085;margin-top:2px;text-wrap:pretty;">Compras parceladas sem localizador e fora da lista de fornecedores de viagem. A resposta vale para este estabelecimento nas próximas faturas.</div>
+                  </div>
+                <div style="border:1px solid #E3E8F3;border-radius:12px;overflow:auto;max-height:520px;">
+                  <table style="border-collapse:collapse;width:100%;font-size:12.5px;">
+                    <thead><tr>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Cartão</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Compra</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Descrição na fatura</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Parcela</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:right;">Valor da parcela</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:right;">Restam</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:right;">Total restante</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Última</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:right;"></th>
+                    </tr></thead>
+                    <tbody>
+                      <sc-for list="{{ cpPend }}" as="i" hint-placeholder-count="3">
+                        <tr>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">{{ i.cartao }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">{{ i.data }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#111827;min-width:170px;">{{ i.desc }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">{{ i.parcela }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;color:#111827;">{{ i.valor }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;color:#374151;">{{ i.restam }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;color:#111827;font-weight:700;">{{ i.totRest }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">{{ i.ultima }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;">
+                            <sc-if value="{{ i.pode }}" hint-placeholder-val="{{ true }}">
+                              <button sc-camel-on-click="{{ i.onAgencia }}" style="background:#1D4ED8;border:none;color:#fff;padding:5px 11px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">Agência</button>
+                              <button sc-camel-on-click="{{ i.onPessoal }}" style="background:#fff;border:1px solid #D8DFEE;color:#374151;padding:5px 11px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;margin-left:6px;">Pessoal</button>
+                            </sc-if>
+                          </td>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ cpTemItens }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                  <div style="font-size:13px;font-weight:700;color:#111827;">Parcelas da agência · {{ cpQtdItens }}</div>
+                <div style="border:1px solid #E3E8F3;border-radius:12px;overflow:auto;max-height:520px;">
+                  <table style="border-collapse:collapse;width:100%;font-size:12.5px;">
+                    <thead><tr>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Cartão</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Compra</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Descrição na fatura</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Parcela</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:right;">Valor da parcela</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:right;">Restam</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:right;">Total restante</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Última</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:right;"></th>
+                    </tr></thead>
+                    <tbody>
+                      <sc-for list="{{ cpItens }}" as="i" hint-placeholder-count="3">
+                        <tr>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">{{ i.cartao }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">{{ i.data }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#111827;min-width:170px;">{{ i.desc }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">{{ i.parcela }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;color:#111827;">{{ i.valor }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;color:#374151;">{{ i.restam }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;color:#111827;font-weight:700;">{{ i.totRest }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">{{ i.ultima }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;">
+                            <sc-if value="{{ i.pode }}" hint-placeholder-val="{{ true }}">
+                              <button sc-camel-on-click="{{ i.onPessoal }}" title="Tira esta compra (e as deste estabelecimento) da projeção" style="background:none;border:1px solid #E3E8F3;color:#667085;padding:4px 10px;border-radius:7px;font-size:12px;cursor:pointer;">Não é da agência</button>
+                            </sc-if>
+                          </td>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ cpTemPessoais }}" hint-placeholder-val="{{ false }}">
+                <details style="font-size:12.5px;color:#667085;">
+                  <summary style="cursor:pointer;">{{ cpQtdPessoais }}</summary>
+                  <div style="margin-top:8px;">
+                <div style="border:1px solid #E3E8F3;border-radius:12px;overflow:auto;max-height:520px;">
+                  <table style="border-collapse:collapse;width:100%;font-size:12.5px;">
+                    <thead><tr>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Cartão</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Compra</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Descrição na fatura</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Parcela</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:right;">Valor da parcela</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:right;">Restam</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:right;">Total restante</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:left;">Última</th>
+                      <th style="position:sticky;top:0;background:#F3F6FB;color:#475569;font-weight:700;padding:8px 10px;border-bottom:1px solid #E3E8F3;white-space:nowrap;text-align:right;"></th>
+                    </tr></thead>
+                    <tbody>
+                      <sc-for list="{{ cpPessoais }}" as="i" hint-placeholder-count="3">
+                        <tr>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">{{ i.cartao }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">{{ i.data }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;color:#111827;min-width:170px;">{{ i.desc }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">{{ i.parcela }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;color:#111827;">{{ i.valor }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;color:#374151;">{{ i.restam }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;color:#111827;font-weight:700;">{{ i.totRest }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">{{ i.ultima }}</td>
+                          <td style="padding:7px 10px;border-bottom:1px solid #F0F2F7;white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;">
+                            <sc-if value="{{ i.pode }}" hint-placeholder-val="{{ true }}">
+                              <button sc-camel-on-click="{{ i.onAgencia }}" style="background:none;border:1px solid #BFD0FB;color:#1D4ED8;padding:4px 10px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">É da agência</button>
+                            </sc-if>
+                          </td>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                </div>
+                  </div>
+                </details>
+              </sc-if>
+              <details style="font-size:12.5px;color:#667085;">
+                <summary style="cursor:pointer;">Faturas na projeção</summary>
+                <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+                  <sc-for list="{{ cpFaturas }}" as="f" hint-placeholder-count="3">
+                    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;border:1px solid #E3E8F3;border-radius:9px;padding:8px 12px;background:#fff;">
+                      <span style="font-weight:700;color:#111827;min-width:160px;">{{ f.apelido }}</span>
+                      <span style="color:#374151;">Vencimento {{ f.venc }}</span>
+                      <span style="color:#667085;">{{ f.qtd }}</span>
+                      <span style="color:#98A2B3;">Importada em {{ f.importado }}</span>
+                      <span style="margin-left:auto;font-weight:600;color:{{ f.usoCor }};">{{ f.uso }}</span>
+                      <sc-if value="{{ f.pode }}" hint-placeholder-val="{{ true }}">
+                        <button sc-camel-on-click="{{ f.onExcluir }}" aria-label="Tirar da projeção" title="Tirar da projeção" style="border:none;background:none;color:#667085;font-size:17px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:6px;">×</button>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </details>
+            </sc-if>
+          </div>
+          </sc-if>
+
           <sc-if value="{{ isFatCad }}" hint-placeholder-val="{{ false }}">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;">
             <div style="border:1px solid #E3E8F3;border-radius:12px;padding:16px 18px;min-width:0;">
@@ -1252,6 +1710,28 @@
                 <div style="font-size:12.5px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 12px;margin-top:10px;">{{ bancoAviso }}</div>
               </sc-if>
             </div>
+            <div style="border:1px solid #E3E8F3;border-radius:12px;padding:16px 18px;min-width:0;">
+              <div style="font-size:13px;font-weight:700;color:#111827;">Cartões do checklist</div><div style="font-size:12px;color:#8A94A6;margin:2px 0 12px;">Lista para lembrar quais cartões conferir. O cartão novo entra no mês aberto no checklist; nos meses seguintes, use "Trazer cartões".</div>
+              <div hidden="{{ isReadOnly }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;">
+                <label style="flex:1 1 160px;min-width:0;font-size:11.5px;color:#6B7280;display:flex;flex-direction:column;gap:4px;">Nome do cartão
+                  <input type="text" value="{{ ncNome }}" sc-camel-on-change="{{ onNcNome }}" placeholder="Ex.: Itaú Visa 4417" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #D8DFEE;border-radius:7px;font-size:13px;"></label>
+                <label style="font-size:11.5px;color:#6B7280;display:flex;flex-direction:column;gap:4px;">Vence dia
+                  <sc-raw-select value="{{ ncDia }}" sc-camel-on-change="{{ onNcDia }}" style="padding:8px 10px;border:1px solid #D8DFEE;border-radius:7px;font-size:13px;background:#fff;">
+                    <sc-for list="{{ diaOptions }}" as="o" hint-placeholder-count="31"><option value="{{ o.value }}">{{ o.label }}</option></sc-for>
+                  </sc-raw-select></label>
+                <button sc-camel-on-click="{{ onAddCartao }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 14px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">Adicionar</button>
+              </div>
+              <sc-for list="{{ cartaoCadRows }}" as="k" hint-placeholder-count="3">
+                <div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid #F4F6FB;">
+                  <div style="flex:1;font-size:13px;color:#111827;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ k.nome }}</div>
+                  <div style="font-size:12.5px;color:#6B7280;white-space:nowrap;">Todo dia {{ k.dia }}</div>
+                  <button sc-camel-on-click="{{ k.onRemove }}" hidden="{{ isReadOnly }}" title="{{ k.removeTitle }}" aria-label="Excluir cartão {{ k.nome }}" style="background:#fff;border:1px solid #FEE4E2;color:#B42318;padding:4px 9px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">Excluir</button>
+                </div>
+              </sc-for>
+              <sc-if value="{{ cartaoCadVazio }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:12.5px;color:#8A94A6;padding:6px 0;">Nenhum cartão cadastrado.</div>
+              </sc-if>
+            </div>
           </div>
           </sc-if>
 
@@ -1284,6 +1764,12 @@
             </div>
             <sc-if value="{{ admErro }}" hint-placeholder-val="{{ false }}">
               <div style="font-size:12.5px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 12px;margin-bottom:12px;">{{ admErro }}</div>
+            </sc-if>
+            <sc-if value="{{ admMsg }}" hint-placeholder-val="{{ false }}">
+              <div role="status" style="display:flex;align-items:center;gap:10px;font-size:12.5px;color:#05603A;background:#ECFDF3;border:1px solid #ABEFC6;border-radius:8px;padding:8px 12px;margin-bottom:12px;">
+                <span style="flex:1;min-width:0;">{{ admMsg }}</span>
+                <button sc-camel-on-click="{{ fecharAdmMsg }}" aria-label="Fechar aviso" style="background:none;border:none;color:#05603A;font-size:14px;cursor:pointer;padding:0 4px;">✕</button>
+              </div>
             </sc-if>
 
             <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
@@ -1319,7 +1805,15 @@
             <sc-for list="{{ admRows }}" as="a" hint-placeholder-count="4">
               <div style="display:grid;grid-template-columns:28px minmax(0,1.9fr) minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.2fr) 112px 28px;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #F4F6FB;background:{{ a.rowBg }};">
                 <input type="checkbox" checked="{{ a.pago }}" sc-camel-on-change="{{ a.onToggle }}" disabled="{{ isReadOnly }}" title="Marcar como paga" style="width:18px;height:18px;margin:0;accent-color:#0F766E;cursor:pointer;">
-                <div style="font-size:13px;font-weight:600;color:{{ a.nomeColor }};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ a.nome }}</div>
+                <div style="min-width:0;">
+                  <div style="font-size:13px;font-weight:600;color:{{ a.nomeColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ a.nome }}</div>
+                  <sc-if value="{{ a.noDre }}" hint-placeholder-val="{{ true }}">
+                    <div title="Lançada no DRE da loja" style="font-size:11px;font-weight:600;color:#027A48;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">✓ {{ a.dreTxt }}</div>
+                  </sc-if>
+                  <sc-if value="{{ a.semDre }}" hint-placeholder-val="{{ false }}">
+                    <button sc-camel-on-click="{{ a.onLancarDre }}" hidden="{{ isReadOnly }}" title="Esta conta foi lançada antes do envio automático ao DRE" style="margin-top:2px;background:none;border:1px solid #BFD0FB;color:#1D4ED8;padding:1px 8px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">Lançar no DRE</button>
+                  </sc-if>
+                </div>
                 <sc-raw-select value="{{ a.tipo }}" sc-camel-on-change="{{ a.onTipo }}" disabled="{{ isReadOnly }}" style="width:100%;min-width:0;padding:5px 6px;border:1px solid transparent;border-radius:6px;font-size:12.5px;background:transparent;color:#374151;">
                   <sc-for list="{{ a.tipoOptions }}" as="o" hint-placeholder-count="6">
                     <option value="{{ o.value }}">{{ o.label }}</option>
@@ -1370,7 +1864,7 @@
           <sc-if value="{{ isFatCheck }}" hint-placeholder-val="{{ false }}">
             <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:14px;">
               <div style="display:flex;flex-direction:column;gap:2px;">
-                <div style="font-size:14px;font-weight:700;color:#111827;">Agenda de pagamento dos cartões</div>
+                <div style="font-size:14px;font-weight:700;color:#111827;">Checklist de cartões a conferir</div>
                 <div style="font-size:12px;color:#8A94A6;">{{ cartaoResumo }}</div>
               </div>
               <div style="margin-left:auto;display:flex;align-items:center;gap:4px;">
@@ -1396,26 +1890,24 @@
               <sc-for list="{{ cartaoChips }}" as="c" hint-placeholder-count="3">
                 <button sc-camel-on-click="{{ c.onClick }}" style="{{ c.style }}">{{ c.label }}</button>
               </sc-for>
-              <button sc-camel-on-click="{{ onExportCartoesAnterior }}" title="Baixa em CSV o checklist da competência anterior" style="margin-left:auto;background:#fff;border:1px solid #D8DFEE;color:#374151;padding:7px 12px;border-radius:7px;font-size:12.5px;font-weight:700;cursor:pointer;">{{ cartaoExportLabel }}</button>
+              <button sc-camel-on-click="{{ onExportCartoesAnterior }}" hidden="{{ isReadOnly }}" title="Copia para este mês os cartões listados no mês anterior (sem duplicar os que já estão aqui)" style="margin-left:auto;background:#1D4ED8;border:1px solid #1D4ED8;color:#fff;padding:7px 12px;border-radius:7px;font-size:12.5px;font-weight:700;cursor:pointer;">{{ cartaoExportLabel }}</button>
             </div>
 
-            <div style="display:grid;grid-template-columns:28px minmax(0,2fr) minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.1fr) 28px;gap:12px;padding-bottom:8px;border-bottom:1px solid #E3E8F3;">
+            <div style="display:grid;grid-template-columns:28px minmax(0,2fr) minmax(0,1.2fr) minmax(0,1.2fr) 28px;gap:12px;padding-bottom:8px;border-bottom:1px solid #E3E8F3;">
               <div></div>
               <div style="font-size:11px;font-weight:700;color:#8A94A6;text-transform:uppercase;">Nome</div>
               <div style="font-size:11px;font-weight:700;color:#8A94A6;text-transform:uppercase;">Vencimento</div>
-              <div style="font-size:11px;font-weight:700;color:#8A94A6;text-transform:uppercase;text-align:right;">Valor</div>
               <div style="font-size:11px;font-weight:700;color:#8A94A6;text-transform:uppercase;text-align:right;">Conferido</div>
               <div></div>
             </div>
             <sc-for list="{{ cartaoRows }}" as="c" hint-placeholder-count="4">
-              <div style="display:grid;grid-template-columns:28px minmax(0,2fr) minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.1fr) 28px;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid #F4F6FB;background:{{ c.rowBg }};">
+              <div style="display:grid;grid-template-columns:28px minmax(0,2fr) minmax(0,1.2fr) minmax(0,1.2fr) 28px;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid #F4F6FB;background:{{ c.rowBg }};">
                 <input type="checkbox" checked="{{ c.conferido }}" sc-camel-on-change="{{ c.onToggle }}" disabled="{{ isReadOnly }}" style="width:18px;height:18px;margin:0;accent-color:#0F766E;cursor:pointer;">
                 <div style="font-size:13.5px;color:{{ c.nomeColor }};font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.nome }}</div>
                 <div style="display:flex;flex-direction:column;gap:1px;">
                   <span style="font-size:13px;color:#374151;font-variant-numeric:tabular-nums;">{{ c.venc }}</span>
                   <span style="font-size:11px;color:{{ c.prazoColor }};">{{ c.prazo }}</span>
                 </div>
-                <input type="text" sc-camel-input-mode="numeric" value="{{ c.valor }}" sc-camel-on-change="{{ c.onValor }}" sc-camel-on-focus="{{ c.onValorFocus }}" sc-camel-on-blur="{{ c.onValorBlur }}" disabled="{{ isReadOnly }}" title="Valor desta competência" style="width:100%;box-sizing:border-box;text-align:right;padding:5px 6px;border:1px solid transparent;border-radius:6px;font-size:13.5px;font-weight:700;background:transparent;color:#111827;font-variant-numeric:tabular-nums;">
                 <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:0;">
                   <span style="font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:{{ c.pillBg }};color:{{ c.pillColor }};">{{ c.status }}</span>
                   <span title="{{ c.assinatura }}" style="font-size:10.5px;color:#8A94A6;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.assinatura }}</span>
@@ -1426,42 +1918,8 @@
             <sc-if value="{{ cartaoVazio }}" hint-placeholder-val="{{ false }}">
               <div style="padding:26px 0;text-align:center;font-size:13px;color:#8A94A6;">{{ cartaoVazioTexto }}</div>
             </sc-if>
-            <div style="display:flex;justify-content:flex-end;gap:20px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:#6B7280;">
-              <span>Pendente: <strong style="color:#B42318;font-variant-numeric:tabular-nums;">{{ cartaoPendenteValor }}</strong></span>
-              <span>Total: <strong style="color:#111827;font-variant-numeric:tabular-nums;">{{ cartaoTotalValor }}</strong></span>
-            </div>
 
-            <div hidden="{{ isReadOnly }}" style="margin-top:22px;padding-top:14px;border-top:1px solid #E3E8F3;">
-              <div style="font-size:13px;font-weight:700;color:#374151;">Cartões cadastrados</div>
-              <div style="font-size:12px;color:#8A94A6;margin:2px 0 12px;">Cada cartão é replicado automaticamente nas competências seguintes, com o mesmo nome e dia de vencimento. O valor parte do último mês lançado.</div>
-              <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,.8fr) minmax(0,1fr) auto;gap:8px;align-items:end;margin-bottom:12px;max-width:720px;">
-                <div style="min-width:0;"><div style="font-size:11.5px;color:#6B7280;margin-bottom:4px;">Nome do cartão</div>
-                  <input type="text" value="{{ ncNome }}" sc-camel-on-change="{{ onNcNome }}" placeholder="Ex.: Itaú Visa 4417" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #D8DFEE;border-radius:7px;font-size:13px;background:#fff;">
-                </div>
-                <div style="min-width:0;"><div style="font-size:11.5px;color:#6B7280;margin-bottom:4px;">Dia do vencimento</div>
-                  <sc-raw-select value="{{ ncDia }}" sc-camel-on-change="{{ onNcDia }}" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #D8DFEE;border-radius:7px;font-size:13px;background:#fff;">
-                    <sc-for list="{{ diaOptions }}" as="o" hint-placeholder-count="31">
-                      <option value="{{ o.value }}">{{ o.label }}</option>
-                    </sc-for>
-                  </sc-raw-select>
-                </div>
-                <div style="min-width:0;"><div style="font-size:11.5px;color:#6B7280;margin-bottom:4px;">Valor previsto</div>
-                  <input type="text" sc-camel-input-mode="numeric" value="{{ ncValor }}" sc-camel-on-change="{{ onNcValor }}" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #D8DFEE;border-radius:7px;font-size:13px;background:#fff;text-align:right;">
-                </div>
-                <button sc-camel-on-click="{{ onAddCartao }}" style="background:#1D4ED8;border:none;color:#fff;padding:9px 16px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">Adicionar cartão</button>
-              </div>
-              <sc-for list="{{ cartaoCadRows }}" as="k" hint-placeholder-count="3">
-                <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #F4F6FB;max-width:720px;">
-                  <div style="font-size:13px;color:#111827;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ k.nome }}</div>
-                  <div style="font-size:12.5px;color:#6B7280;">Todo dia {{ k.dia }}</div>
-                  <div style="font-size:12.5px;color:#6B7280;text-align:right;font-variant-numeric:tabular-nums;">{{ k.valor }}</div>
-                  <button sc-camel-on-click="{{ k.onRemove }}" title="{{ k.removeTitle }}" style="background:#fff;border:1px solid #FEE4E2;color:#B42318;padding:5px 10px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;">Excluir</button>
-                </div>
-              </sc-for>
-              <sc-if value="{{ cartaoCadVazio }}" hint-placeholder-val="{{ false }}">
-                <div style="font-size:12.5px;color:#8A94A6;padding:6px 0;">Nenhum cartão cadastrado.</div>
-              </sc-if>
-            </div>
+            <div style="font-size:12px;color:#8A94A6;margin-top:14px;">Os cartões são cadastrados em <strong style="color:#374151;">Faturas › Cadastro</strong>. Em cada mês novo, use o botão "Trazer cartões" para repetir a lista do mês anterior.</div>
           </sc-if>
         </div>
       </sc-if>
@@ -1911,6 +2369,20 @@
           <button sc-camel-on-click="{{ closeAdmin }}" style="background:none;border:none;font-size:18px;color:#6B7280;cursor:pointer;">✕</button>
         </div>
 
+        <div style="font-size:12.5px;font-weight:700;color:#374151;margin-bottom:2px;">Operações</div>
+        <div style="font-size:11.5px;color:#8A94A6;margin-bottom:6px;">Loja fora de funcionamento: desative para ela não entrar na Consolidação, nas exportações e nas Contas Administrativas. Os lançamentos ficam guardados.</div>
+        <sc-for list="{{ adminOps }}" as="o" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #F1F3F9;font-size:13px;">
+            <span style="width:9px;height:9px;border-radius:50%;flex:none;background:{{ o.cor }};opacity:{{ o.opac }};"></span>
+            <span style="flex:1;min-width:0;font-weight:600;color:{{ o.nomeCor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ o.nome }}</span>
+            <span style="font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;background:{{ o.pillBg }};color:{{ o.pillFg }};white-space:nowrap;">{{ o.status }}</span>
+            <button sc-camel-on-click="{{ o.onToggle }}" style="background:#fff;border:1px solid #D8DFEE;color:{{ o.btnCor }};padding:5px 11px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">{{ o.btn }}</button>
+          </div>
+        </sc-for>
+        <sc-if value="{{ adminOpsMsg }}" hint-placeholder-val="{{ false }}">
+          <div role="status" style="font-size:12.5px;color:#16A34A;margin-top:8px;">{{ adminOpsMsg }}</div>
+        </sc-if>
+        <div style="height:16px;"></div>
         <div style="font-size:12.5px;font-weight:700;color:#374151;margin-bottom:2px;">Usuários e permissões</div>
         <div style="font-size:11.5px;color:#8A94A6;margin-bottom:6px;">Escolha um perfil pronto ou ajuste módulo a módulo: sem acesso (oculto), visualizar ou editar.</div>
         <sc-for list="{{ adminUsers }}" as="u" hint-placeholder-count="2">
@@ -2033,7 +2505,7 @@ class Component extends DCLogic {
     opIndex: 0,
     month: 6,
     year: 2026,
-    units: UNIT_DEFS.map(u=>({name:u.name, tipo:u.tipo, cor:u.cor, values:{}, capitalSocial:0, customRows:{}})),
+    units: UNIT_DEFS.map(u=>({name:u.name, tipo:u.tipo, cor:u.cor, values:{}, capitalSocial:0, customRows:{}, ativo: !lerJSON(LS_OPS_INATIVAS, []).includes(u.name)})),
     newCredorLabel: "",
     newOutraLabel: "",
     confirmClear: false,
@@ -2048,13 +2520,17 @@ class Component extends DCLogic {
     faturas: [], faturaTipos: FATURA_TIPOS_PADRAO.slice(),
     faturaFiltro: "todas", faturaComp: "", newTipoFatura: "",
     faturaSub: "lancamentos", responsaveis: [], newResp: "", respPendentes: [], respAviso: "", bancos: [], newBanco: "", bancoAviso: "", recPend: {}, recAviso: "", recFaltaBanco: null,
-    adm: [], admTipos: ADM_TIPOS_PADRAO.slice(), admComp: compAtualISO(), admFiltro: "todas", admLoja: "", admErro: "", newAdmTipo: "",
+    adm: [], admTipos: ADM_TIPOS_PADRAO.slice(), admComp: compAtualISO(), admFiltro: "todas", admLoja: "", admErro: "", admMsg: "", newAdmTipo: "",
     naNome: "", naTipo: ADM_TIPOS_PADRAO[0], naLoja: "", naVenc: "", naValorRaw: 0,
     cartoes: [], cartaoChecks: [], cartaoComp: compAtualISO(), cartaoFiltro: "todos", cartaoSync: "",
     ncNome: "", ncDia: "10", ncValorRaw: 0,
     nfDesc: "", nfTipo: FATURA_TIPOS_PADRAO[0], nfComp: "", nfVenc: "", nfValorRaw: 0, nfMov: "pagar", nfResp: "",
     faturaErro: "", faturaSync: "", faturaTipoAviso: "",
     modulo: "financeiro",
+    fc: null, fcSub: "despesas", fcFiltro: "aberto", fcDia: fcHojeISO(), fcMes: fcHojeISO().slice(0,7), fcEmp: "", fcRef: fcHojeISO(), fcInv: "",
+    fcNd: {hist:"", valorRaw:0, venc:fcHojeISO(), emp:""}, fcNa: {num:"", inv:"JOÃO", hist:"", valorRaw:0, data:fcHojeISO(), abatRaw:0, quit:""},
+    fcNc: "", fcNm: {}, fcEdit: {}, fcNovaEmp: "", fcAviso: "", fcCarregando: false,
+    cp: null, cpCarregando: false, cpAviso: "", ccProj: [],
     fdEmp: "azul", fdComp: comModoLocal() ? FD_DEMO_COMP.azul : new Date().toISOString().slice(0,7), fdDados: {}, fdDraft: {}, fdMsg: "", fdErro: "", fdHover: -1, comDiaHover: -1,
     hdChamados: [], hdAtendentes: [], hdFiltro: "abertos", hdSel: null, hdFormOpen: false, hdNovo: hdNovoVazio(), hdErro: "", hdErroDet: "", hdResposta: "", hdInterno: false,
     comVendas: [], comLotes: [], comCarregado: false, comSub: "painel", comComissoes: {}, comMetrica: "liquido", cmComp: new Date().toISOString().slice(0,7), cmDados: null, cmCompCarregada: "", cmCarregando: false, cmSujo: false, cmSalvando: false, cmMsg: "", cmMsgErro: false, cmInfo: "", comAno: "", comMes: "", comLoja: "", comVendedor: "", comArq: null, comErroImp: "", comImpMsg: "", comEnviando: false, comErro: "",
@@ -2063,6 +2539,8 @@ class Component extends DCLogic {
   };
 
   componentDidMount(){
+    // Pré-visualização: entra direto como administrador, sem servidor (ver MODO_PREVIA em js/api.js).
+    if(MODO_PREVIA) setTimeout(()=>this.setState(st=>st.session ? null : {session:{email:"previa@grupoazul.local", role:"admin", permissoes:null}}), 0);
     this.carregarCacheModulos();
     try{
       const rawUsers = localStorage.getItem(LS_USERS);
@@ -2234,7 +2712,7 @@ class Component extends DCLogic {
             values[code] = {...values[code], [`${year}-${l.mes-1}`]: parseFloat(l.valor)};
           }));
         }
-        return {...u, capitalSocial: op ? parseFloat(op.capital_social)||0 : (u.capitalSocial||0), customRows, values};
+        return {...u, capitalSocial: op ? parseFloat(op.capital_social)||0 : (u.capitalSocial||0), customRows, values, ativo: op && op.ativo!=null ? op.ativo!==false : u.ativo!==false};
       });
       const [debts, locksRows] = await Promise.all([apiFetch("/api/dividas"), apiFetch("/api/locks")]);
       const mappedDebts = debts.map(d=>({id:"debt_"+d.id, credor:d.credor, valorInicial:parseFloat(d.valor_inicial), anoInicial:d.ano_inicial, mesInicial:d.mes_inicial-1, jurosMensal:parseFloat(d.juros_mensal)}));
@@ -2274,6 +2752,7 @@ class Component extends DCLogic {
   permAba(aba){
     const s = this.state.session;
     if(!s) return "nenhum";
+    if(aba==="fluxocaixa") return s.role==="admin" ? "editar" : "nenhum"; // Fluxo de Caixa: só administradores
     if(s.role==="admin") return "editar";
     const p = s.permissoes && s.permissoes[aba];
     // Aba nova: quem não tem registro herda o nível de "Por operação".
@@ -2500,9 +2979,36 @@ class Component extends DCLogic {
     }).catch(()=>this.setState({cartaoSync: "offline"}));
   }
   irCartaoComp(comp){
-    const checks = this.gerarChecksLocal(comp, this.state.cartoes, this.state.cartaoChecks);
-    this.setState({cartaoComp: comp, cartaoChecks: checks});
+    this.setState({cartaoComp: comp});
     this.carregarCartoes(comp);
+  }
+  // Copia para o mês aberto os cartões listados no mês anterior (sem duplicar e reativando os removidos aqui).
+  transferirCartoes(){
+    const s = this.state, para = s.cartaoComp, de = compShift(para, -1);
+    const origem = s.cartaoChecks.filter(k=>k.comp===de && !k.removido);
+    const aplicarLocal = ()=>{
+      let checks = s.cartaoChecks.slice(), n = 0;
+      origem.forEach(k=>{
+        const aqui = checks.find(x=>x.cartaoId===k.cartaoId && x.comp===para);
+        if(aqui && !aqui.removido) return;
+        const cad = s.cartoes.find(c=>c.id===k.cartaoId);
+        const dia = cad ? cad.dia : parseInt(String(k.venc||"").slice(8,10),10) || 1;
+        if(aqui) checks = checks.map(x=>x===aqui ? {...x, removido:false} : x);
+        else checks.push({id:"l" + k.cartaoId + "_" + para, cartaoId:k.cartaoId, comp:para, nome:k.nome, venc:vencNoMes(para, dia), valor:0, conferido:false, por:null, em:null, removido:false});
+        n++;
+      });
+      this.setState({cartaoChecks: checks, faturaErro: n ? "" : "Todos os cartões de " + compLabelISO(de) + " já estão em " + compLabelISO(para) + "."});
+      this.persistCartoes(null, checks);
+      if(n) this.logAudit("Trouxe cartões do mês anterior", n + " cartão(ões) de " + de + " para " + para);
+    };
+    if(API_BASE_URL){
+      apiFetch("/api/cartoes/transferir", {method:"POST", body: JSON.stringify({de, para})})
+        .then(r=>{ this.logAudit("Trouxe cartões do mês anterior", (r && r.inseridos != null ? r.inseridos : "?") + " cartão(ões) de " + de + " para " + para); this.carregarCartoes(para); })
+        .catch(()=>{ if(!origem.length){ this.setState({faturaErro:"Não encontrei cartões em " + compLabelISO(de) + ". Abra o mês anterior uma vez para carregar a lista e tente de novo."}); return; } aplicarLocal(); this.setState({faturaErro:"O servidor ainda não tem a transferência de cartões (server.js novo). A lista foi copiada só neste navegador."}); });
+      return;
+    }
+    if(!origem.length){ this.setState({faturaErro:"Nenhum cartão em " + compLabelISO(de) + " para trazer."}); return; }
+    aplicarLocal();
   }
   addCartao(){
     const s = this.state;
@@ -2512,7 +3018,8 @@ class Component extends DCLogic {
     const valor = s.ncValorRaw || 0;
     const c = {id: "lc" + Date.now(), nome, dia, valor, inicio: s.cartaoComp, fim: null};
     const cartoes = [...s.cartoes, c];
-    const checks = this.gerarChecksLocal(s.cartaoComp, cartoes, s.cartaoChecks);
+    // O cartão novo entra só no mês aberto; os meses seguintes recebem pela transferência.
+    const checks = s.cartaoChecks.concat([{id:"l" + c.id + "_" + s.cartaoComp, cartaoId:c.id, comp:s.cartaoComp, nome, venc:vencNoMes(s.cartaoComp, dia), valor, conferido:false, por:null, em:null, removido:false}]);
     this.setState({cartoes, cartaoChecks: checks, ncNome: "", ncValorRaw: 0});
     this.persistCartoes(cartoes, checks);
     this.logAudit("Cadastrou cartão", nome + " · dia " + dia);
@@ -2614,16 +3121,84 @@ class Component extends DCLogic {
     const novas = daOrigem.filter(a=>!jaTem.has(chave(a))).map((a,i)=>({id: "l" + Date.now() + "_" + i, nome: a.nome, tipo: a.tipo, loja: a.loja,
       venc: vencNoMes(destino, parseInt(String(a.venc).slice(8,10),10) || 1), valor: Number(a.valor)||0, pago: false, por: null}));
     if(!novas.length){ this.setState({admErro: "Todas as contas de " + compLabelISO(origem) + " já estão em " + compLabelISO(destino) + "."}); return; }
-    if(!window.confirm("Replicar " + novas.length + " conta(s) de " + compLabelISO(origem) + " para " + compLabelISO(destino) + "? Elas entram em aberto, com o mesmo dia de vencimento e valor.")) return;
+    const alvos = novas.map(n=>this.admDreAlvo(n));
+    const noDre = alvos.filter(a=>!a.erro), totDre = noDre.reduce((t,a)=>t+a.valor,0);
+    if(!window.confirm("Replicar " + novas.length + " conta(s) de " + compLabelISO(origem) + " para " + compLabelISO(destino) + "? Elas entram em aberto, com o mesmo dia de vencimento e valor."
+      + (noDre.length ? "\n\n" + noDre.length + " conta(s) também vão para o DRE de " + compLabelISO(destino) + ", somando " + formatMoeda(totDre) + "." : "")
+      + (noDre.length<novas.length ? "\n" + (novas.length-noDre.length) + " conta(s) não entram no DRE (loja desativada ou fora do DRE)." : ""))) return;
+    novas.forEach((n,i)=>{ const a = alvos[i]; n.dre = a.erro ? null : {codigo:a.codigo, loja:a.loja, ano:a.ano, mes:a.mes, valor:a.valor}; });
+    if(!API_BASE_URL) novas.forEach(n=>this.admDreLocal(n.dre, +1));
+    if(noDre.length) this.setState({admMsg: noDre.length + " conta(s) replicadas e enviadas ao DRE de " + compLabelISO(destino) + " (" + formatMoeda(totDre) + ")."});
     const adm = [...s.adm, ...novas];
     this.setState({adm, admComp: destino, admErro: ""});
     this.persistAdm(adm);
     this.logAudit("Replicou contas administrativas", novas.length + " conta(s) · " + compLabelISO(origem) + " → " + compLabelISO(destino));
     if(API_BASE_URL){
-      Promise.all(novas.map(n=>apiFetch("/api/faturas-adm", {method:"POST", body: JSON.stringify({nome:n.nome, tipo:n.tipo, loja:n.loja, venc:n.venc, valor:n.valor})})))
-        .then(()=>this.carregarAdm())
+      Promise.all(novas.map(n=>apiFetch("/api/faturas-adm", {method:"POST", body: JSON.stringify({nome:n.nome, tipo:n.tipo, loja:n.loja, venc:n.venc, valor:n.valor, dre: n.dre ? n.dre.codigo : null})})))
+        .then(()=>{ this.carregarAdm(); this.admDreDepois(); })
         .catch(()=>this.setState({admErro: "Parte das contas replicadas não chegou ao servidor. Elas ficaram neste navegador."}));
     }
+  }
+  // ----- Operações ativas / desativadas (Administração) -----
+  // Operação desativada: sai da Consolidação, das listas de operação, das exportações e das Contas Administrativas.
+  // Os lançamentos continuam guardados e voltam a contar quando a operação é reativada.
+  opsAtivasIdx(){ return this.state.units.map((u,i)=>u.ativo===false ? -1 : i).filter(i=>i>=0); }
+  garantirOpAtiva(){
+    const s = this.state, u = s.units[s.opIndex];
+    if(u && u.ativo===false){ const i = this.opsAtivasIdx()[0]; if(i!=null && i!==s.opIndex) this.setState({opIndex:i}); }
+  }
+  opAtivar(idx, ativo){
+    const u = this.state.units[idx]; if(!u) return;
+    if(!ativo && !window.confirm("Desativar a operação \"" + u.name + "\"?\n\nEla sai da Consolidação, da escolha de operação, das exportações e das Contas Administrativas. Os lançamentos ficam guardados e voltam a contar se você reativar.")) return;
+    const units = this.state.units.map((x,i)=>i===idx ? {...x, ativo} : x);
+    try{ localStorage.setItem(LS_OPS_INATIVAS, JSON.stringify(units.filter(x=>x.ativo===false).map(x=>x.name))); }catch(e){}
+    this.setState({units, adminOpsMsg: (ativo ? "Operação reativada: " : "Operação desativada: ") + u.name + "."}, ()=>this.garantirOpAtiva());
+    this.logAudit(ativo ? "Reativou operação" : "Desativou operação", u.name);
+    const opId = this.state.opIdByName && this.state.opIdByName[u.name];
+    if(API_BASE_URL && opId) apiFetch("/api/operacoes/" + opId + "/ativo", {method:"PATCH", body:JSON.stringify({ativo})})
+      .catch(()=>this.setState({adminOpsMsg:"A mudança não chegou ao servidor (publique o server.js novo). Ficou só neste navegador."}));
+  }
+  // ----- Contas Administrativas → DRE -----
+  // Cada conta lançada soma o valor na linha do DRE da loja, na competência do vencimento.
+  // Ao mudar tipo, loja, vencimento ou valor, o lançamento anterior é desfeito e refeito; ao excluir, sai do DRE.
+  admDreAlvo(conta){
+    const u = this.state.units.find(x=>x.name===conta.loja);
+    if(!u) return {erro:"a loja \"" + (conta.loja||"—") + "\" não é uma operação do DRE"};
+    if(u.ativo===false) return {erro:"a operação " + u.name + " está desativada"};
+    if(!/^\d{4}-\d{2}/.test(conta.venc||"")) return {erro:"sem data de vencimento"};
+    const codigo = admLinhaDre(conta.tipo, u), d = DETAIL_ROWS.find(x=>x.id===codigo);
+    const cat = (CATEGORIES.find(c=>c.key===d.cat)||{}).label || "";
+    const ano = +conta.venc.slice(0,4), mes = +conta.venc.slice(5,7);
+    return {codigo, loja:u.name, ano, mes, valor:Math.round((Number(conta.valor)||0)*100)/100, rotulo: cat + " › " + d.label, comp: MESES[mes-1] + "/" + ano};
+  }
+  admDreTexto(alvo){ return alvo.loja + "\n" + alvo.rotulo + "\nCompetência: " + alvo.comp + "\nValor: " + formatMoeda(alvo.valor); }
+  // Só sem servidor (pré-visualização): com servidor, quem soma no DRE é a rota /api/faturas-adm.
+  admDreLocal(dre, sinal){
+    if(!dre) return;
+    this.setState(st=>{ const units = [...st.units], i = units.findIndex(u=>u.name===dre.loja); if(i<0) return null;
+      const u = {...units[i]}, values = {...u.values}, k = dre.ano + "-" + (dre.mes-1);
+      values[dre.codigo] = {...values[dre.codigo], [k]: Math.round(((((values[dre.codigo]||{})[k])||0) + sinal*dre.valor)*100)/100};
+      u.values = values; units[i] = u; this.persistData(units); return {units}; });
+  }
+  admDreDepois(){ if(API_BASE_URL) this.loadFromApi(); }
+  admLancarNoDre(id){
+    const a = this.state.adm.find(x=>x.id===id); if(!a || a.dre) return;
+    const alvo = this.admDreAlvo(a);
+    if(alvo.erro){ this.setState({admErro:"Não dá para lançar no DRE: " + alvo.erro + "."}); return; }
+    if(!window.confirm("Lançar esta conta no DRE?\n\n" + this.admDreTexto(alvo))) return;
+    const dre = {codigo:alvo.codigo, loja:alvo.loja, ano:alvo.ano, mes:alvo.mes, valor:alvo.valor};
+    this.admAplicarPatch(id, {dre}, {dre:alvo.codigo}, "Lançada no DRE: " + alvo.loja + " · " + alvo.rotulo + " · " + alvo.comp + ".");
+    this.logAudit("Lançou conta administrativa no DRE", a.nome + " · " + alvo.loja + " · " + alvo.comp);
+  }
+  admAplicarPatch(id, campos, body, msg){
+    const antes = this.state.adm.find(a=>a.id===id);
+    const adm = this.state.adm.map(a=>a.id===id ? {...a, ...campos} : a);
+    this.setState({adm, admMsg: msg || this.state.admMsg});
+    this.persistAdm(adm);
+    if(!API_BASE_URL){ if(antes && antes.dre && campos.dre!==undefined) this.admDreLocal(antes.dre, -1); if(campos.dre) this.admDreLocal(campos.dre, +1); return; }
+    if(/^\d+$/.test(String(id))) apiFetch("/api/faturas-adm/" + id, {method:"PATCH", body: JSON.stringify(body)})
+      .then(()=>{ this.carregarAdm(); this.admDreDepois(); })
+      .catch((e)=>this.setState({admErro: "Alteração não salva no servidor" + (e && e.message ? " (" + e.message + ")" : "") + ".", admMsg:""}));
   }
   // ----- Faturas administrativas -----
   persistAdm(itens, tipos){
@@ -2643,20 +3218,35 @@ class Component extends DCLogic {
     const nome = (s.naNome || "").trim();
     if(!nome){ this.setState({admErro: "Informe o nome da fatura."}); return; }
     if(!s.naVenc){ this.setState({admErro: "Informe a data de vencimento."}); return; }
-    const loja = s.naLoja || (s.units[0] ? s.units[0].name : "");
+    const loja = s.naLoja || ((s.units.find(u=>u.ativo!==false)||s.units[0]||{}).name || "");
     const nova = {id: "l" + Date.now(), nome, tipo: s.naTipo || s.admTipos[0] || "", loja, venc: s.naVenc,
-      valor: s.naValorRaw || 0, pago: false, por: null};
+      valor: s.naValorRaw || 0, pago: false, por: null, dre: null};
+    // Toda conta lançada aqui vai para o DRE da loja, com confirmação.
+    const alvo = this.admDreAlvo(nova);
+    if(alvo.erro){ this.setState({admErro: "Não dá para lançar no DRE: " + alvo.erro + "."}); return; }
+    if(!window.confirm("Lançar a conta \"" + nome + "\" e enviar para o DRE?\n\n" + this.admDreTexto(alvo))) return;
+    nova.dre = {codigo:alvo.codigo, loja:alvo.loja, ano:alvo.ano, mes:alvo.mes, valor:alvo.valor};
     const adm = [...s.adm, nova];
-    this.setState({adm, naNome: "", naVenc: "", naValorRaw: 0, admErro: "", admComp: s.admComp ? s.naVenc.slice(0,7) : ""});
+    this.setState({adm, naNome: "", naVenc: "", naValorRaw: 0, admErro: "", admComp: s.admComp ? s.naVenc.slice(0,7) : "",
+      admMsg: "Conta lançada e enviada ao DRE: " + alvo.loja + " · " + alvo.rotulo + " · " + alvo.comp + " · " + formatMoeda(alvo.valor) + "."});
     this.persistAdm(adm);
-    this.logAudit("Lançou fatura administrativa", nome + " · " + loja + " · " + formatMoeda(nova.valor));
-    if(API_BASE_URL){
-      apiFetch("/api/faturas-adm", {method:"POST", body: JSON.stringify({nome, tipo: nova.tipo, loja, venc: nova.venc, valor: nova.valor})})
-        .then(()=>this.carregarAdm())
-        .catch(()=>this.setState({admErro: "A fatura não chegou ao servidor. Ela ficou só neste navegador."}));
-    }
+    this.logAudit("Lançou fatura administrativa", nome + " · " + loja + " · " + formatMoeda(nova.valor) + " · DRE " + alvo.rotulo + " " + alvo.comp);
+    if(!API_BASE_URL){ this.admDreLocal(nova.dre, +1); return; }
+    apiFetch("/api/faturas-adm", {method:"POST", body: JSON.stringify({nome, tipo: nova.tipo, loja, venc: nova.venc, valor: nova.valor, dre: alvo.codigo})})
+      .then(()=>{ this.carregarAdm(); this.admDreDepois(); })
+      .catch((e)=>this.setState({admMsg:"", admErro: "A fatura não chegou ao servidor" + (e && e.message ? " (" + e.message + ")" : "") + ". Ela ficou só neste navegador e não entrou no DRE."}));
   }
   patchAdm(id, campos, auditMsg){
+    const antes = this.state.adm.find(a=>a.id===id);
+    if(antes && antes.dre && ["tipo","loja","venc","valor"].some(k=>campos[k]!==undefined)){
+      const alvo = this.admDreAlvo({...antes, ...campos});
+      if(alvo.erro){ this.setState({admErro:"Alteração não feita: " + alvo.erro + ". A conta está lançada no DRE."}); return; }
+      const dre = {codigo:alvo.codigo, loja:alvo.loja, ano:alvo.ano, mes:alvo.mes, valor:alvo.valor};
+      const body = {dre: alvo.codigo}; ["nome","tipo","loja","venc","valor"].forEach(k=>{ if(campos[k]!==undefined) body[k] = campos[k]; });
+      if(auditMsg) this.logAudit(auditMsg, antes.nome + " · " + antes.loja);
+      this.admAplicarPatch(id, {...campos, dre}, body, "DRE atualizado: " + alvo.loja + " · " + alvo.rotulo + " · " + alvo.comp + " · " + formatMoeda(alvo.valor) + ".");
+      return;
+    }
     const adm = this.state.adm.map(a=>a.id===id ? {...a, ...campos} : a);
     this.setState({adm});
     this.persistAdm(adm);
@@ -2676,13 +3266,14 @@ class Component extends DCLogic {
   }
   removeAdm(id){
     const alvo = this.state.adm.find(a=>a.id===id);
-    if(!alvo || !window.confirm("Excluir a fatura \"" + alvo.nome + "\"?")) return;
+    if(!alvo || !window.confirm("Excluir a fatura \"" + alvo.nome + "\"?" + (alvo.dre ? "\n\nO valor de " + formatMoeda(alvo.dre.valor) + " também sai do DRE (" + alvo.dre.loja + " · " + MESES[alvo.dre.mes-1] + "/" + alvo.dre.ano + ")." : ""))) return;
     const adm = this.state.adm.filter(a=>a.id!==id);
-    this.setState({adm});
+    this.setState({adm, admMsg: alvo.dre ? "Conta excluída e retirada do DRE." : this.state.admMsg});
     this.persistAdm(adm);
+    if(!API_BASE_URL && alvo.dre) this.admDreLocal(alvo.dre, -1);
     this.logAudit("Excluiu fatura administrativa", alvo.nome + " · " + alvo.loja);
     if(API_BASE_URL && /^\d+$/.test(String(id))){
-      apiFetch("/api/faturas-adm/" + id, {method:"DELETE"}).then(()=>this.carregarAdm())
+      apiFetch("/api/faturas-adm/" + id, {method:"DELETE"}).then(()=>{ this.carregarAdm(); this.admDreDepois(); })
         .catch(()=>this.setState({admErro: "Exclusão não registrada no servidor."}));
     }
   }
@@ -3195,7 +3786,7 @@ class Component extends DCLogic {
     const u = this.state.units[unitIdx];
     const rows = [];
     for(const cat of CATEGORIES){
-      const items = DETAIL_ROWS.filter(d=>d.cat===cat.key && (!d.tipo||d.tipo===u.tipo));
+      const items = DETAIL_ROWS.filter(d=>d.cat===cat.key && (linhaDaOperacao(d,u) || (!d.tipo && getVal(u,d.id,year,month))));
       for(const d of items) rows.push([cat.label, d.label, Math.round(getVal(u,d.id,year,month))]);
       for(const li of this.manuaisPorNome(cat.key, [u], year, month)) rows.push([cat.label, li.label, Math.round(li.vals[0])]);
     }
@@ -3209,7 +3800,7 @@ class Component extends DCLogic {
     const {exportYear:year,exportMonth:month,exportScope,exportLoja} = this.state;
     const aoa = (exportScope==="loja" && exportLoja!=="todas")
       ? this.buildLojaAoa(year,month,parseInt(exportLoja,10))
-      : this.buildDetailAoa(year,month,this.state.units.map((_,i)=>i));
+      : this.buildDetailAoa(year,month,this.opsAtivasIdx());
     const csv = aoa.map(r=>r.map(v=>typeof v==="string" ? `"${v.replace(/"/g,'""')}"` : v).join(";")).join("\n");
     const blob = new Blob(["\ufeff"+csv], {type:"text/csv;charset=utf-8;"});
     const url = URL.createObjectURL(blob);
@@ -3222,10 +3813,10 @@ class Component extends DCLogic {
     const {exportYear:year,exportMonth:month,exportScope,exportLoja} = this.state;
     const wb = XLSX.utils.book_new();
     if(exportScope==="consolidado"){
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(this.buildDetailAoa(year,month,this.state.units.map((_,i)=>i))), "Consolidado");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(this.buildDetailAoa(year,month,this.opsAtivasIdx())), "Consolidado");
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(this.buildDebtAoa(year,month)), "Passivo (Dívidas)");
     } else if(exportLoja==="todas"){
-      this.state.units.forEach((u,i)=>{
+      this.state.units.forEach((u,i)=>{ if(u.ativo===false) return;
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(this.buildLojaAoa(year,month,i)), u.name.slice(0,31));
       });
     } else {
@@ -3669,7 +4260,7 @@ class Component extends DCLogic {
     const unit = s.units[s.opIndex]; if(!unit) return {isImport:false};
     const pode = this.permAba("importacao")==="editar" && this.permAba("operacao")==="editar";
     const catLabel = {}; CATEGORIES.forEach(c=>catLabel[c.key]=c.label);
-    const linhasDre = DETAIL_ROWS.filter(d=>!d.tipo || d.tipo===unit.tipo);
+    const linhasDre = DETAIL_ROWS.filter(d=>linhaDaOperacao(d, unit));
     const blocos = [], soma = {}; let pendTotal = 0;
     const tipos = IMP_TIPOS.map(t=>{
       const a = s.impArq[t.id];
@@ -3811,9 +4402,38 @@ class Component extends DCLogic {
     const on = (x)=>({bg:x?"#EEF2FF":"transparent", fg:x?"#1D4ED8":"#475569", fw:x?800:600});
     const hdPerm = this.permAba("helpdesk"), rhPerm = this.permAba("rh");
     const hdEdit = hdPerm==="editar", rhEdit = rhPerm==="editar";
-    const navFin = ABAS_PERM.filter(a=>this.permAba(a.id)!=="nenhum").map(a=>({label:a.label, ...on(mod==="financeiro"&&viewEf===a.id),
+    // Menu do Financeiro: "Resultado" agrupa Por operação, Consolidação, Balanço e Passivo; Importar relatórios fica por último.
+    const FIN_RESULTADO = ["operacao","consolidacao","balanco","passivo"];
+    const itemFin = (a, pad)=>({label:a.label, ...on(mod==="financeiro"&&viewEf===a.id), pad: pad || "12px", seta:"", aberto: null,
       badge: a.id==="faturas" ? (d.cartaoAlertaQtd||0) : a.id==="contasadm" ? (d.admAlertaQtd||0) : 0,
-      onClick:()=>{ this.flushCommits(); this.setState({modulo:"financeiro", view:a.id}); this.setComp(s.year + "-" + String(s.month+1).padStart(2,"0"), true); if(a.id==="contasadm") this.carregarAdm(); }}));
+      onClick:()=>{ this.flushCommits(); this.setState({modulo:"financeiro", view:a.id}); this.setComp(s.year + "-" + String(s.month+1).padStart(2,"0"), true); if(a.id==="contasadm") this.carregarAdm(); }});
+    const finVis = ABAS_PERM.filter(a=>this.permAba(a.id)!=="nenhum");
+    const finRes = FIN_RESULTADO.map(id=>finVis.find(a=>a.id===id)).filter(Boolean);
+    const navFin = [];
+    if(finRes.length){
+      const resAberto = s.navResAberto!==false, resAtivo = mod==="financeiro" && FIN_RESULTADO.includes(viewEf);
+      navFin.push({label:"Resultado", ...on(resAtivo && !resAberto), fw: 700, pad:"12px", seta: resAberto ? "▾" : "▸", aberto: resAberto, badge:0,
+        onClick:()=>this.setState({navResAberto: !resAberto})});
+      if(resAberto) finRes.forEach(a=>navFin.push(itemFin(a, "28px")));
+    }
+    // Grupo "Faturas": Lançamentos, Recebimentos, Apuração, Checklist de cartões, Cadastro e Conferência de fatura.
+    const podeFat = finVis.some(a=>a.id==="faturas"), podeConf = finVis.some(a=>a.id==="conferencia");
+    if(podeFat || podeConf){
+      const fatAberto = s.navFatAberto!==false, subAtual = ["recebimentos","apuracao","cadastros","cartoes","projecao"].includes(s.faturaSub) ? s.faturaSub : "lancamentos";
+      const fatAtivo = mod==="financeiro" && (viewEf==="faturas" || viewEf==="conferencia");
+      navFin.push({label:"Faturas", ...on(fatAtivo && !fatAberto), fw: 700, pad:"12px", seta: fatAberto ? "▾" : "▸", aberto: fatAberto,
+        badge: fatAberto ? 0 : ((d.fatBadges||{}).cartoes || 0), onClick:()=>this.setState({navFatAberto: !fatAberto})});
+      if(fatAberto){
+        if(podeFat) [["lancamentos","Lançamentos"],["recebimentos","Recebimentos"],["apuracao","Apuração"],["cartoes","Checklist de cartões"],["projecao","Projeção de cartões"],["cadastros","Cadastro"]].forEach(([id,label])=>navFin.push({
+          label, ...on(mod==="financeiro" && viewEf==="faturas" && subAtual===id), pad:"28px", seta:"", aberto:null, badge: (d.fatBadges||{})[id] || 0,
+          onClick:()=>{ this.flushCommits(); this.setState({modulo:"financeiro", view:"faturas", faturaSub:id}); this.setComp(s.year + "-" + String(s.month+1).padStart(2,"0"), true); if(id==="cartoes") this.carregarCartoes(); if(id==="projecao") this.cpCarregar(); }}));
+        if(podeConf) navFin.push(itemFin(finVis.find(a=>a.id==="conferencia"), "28px"));
+      }
+    }
+    finVis.filter(a=>!FIN_RESULTADO.includes(a.id) && !["importacao","faturas","conferencia"].includes(a.id)).forEach(a=>navFin.push(itemFin(a)));
+    if(s.session && s.session.role==="admin") navFin.push({label:"Fluxo de Caixa", ...on(mod==="financeiro"&&viewEf==="fluxocaixa"), pad:"12px", seta:"", aberto: null, badge:0,
+      onClick:()=>{ this.flushCommits(); this.setState({modulo:"financeiro", view:"fluxocaixa"}); this.fcCarregar(); }});
+    finVis.filter(a=>a.id==="importacao").forEach(a=>navFin.push(itemFin(a)));
     const hdNovos = s.hdNovosN||0;
     const hdLabel = hdEdit ? "Chamados" : "Meus chamados";
     const navHd = [{label:hdLabel, ...on(mod==="helpdesk"), badge: hdEdit ? hdNovos : 0, onClick:()=>this.setState({modulo:"helpdesk"})}];
@@ -4030,6 +4650,317 @@ class Component extends DCLogic {
     const _r = this.confValsBase(s);
     return Object.assign(_r, menu, {confGenerico:true, isCartao:false});
   }
+  previaVals(){
+    let host = ""; try{ host = location.hostname || ""; }catch(e){}
+    return {podePrevia: !MODO_PREVIA && !/onrender\.com$/i.test(host), emPrevia: MODO_PREVIA,
+      onAbrirPrevia:()=>{ try{ sessionStorage.setItem("grupoAzul_previa","1"); location.reload(); }catch(e){ this.setState({authError:"Este navegador não permitiu abrir a pré-visualização."}); } },
+      onSairPrevia:()=>{ try{ sessionStorage.removeItem("grupoAzul_previa"); }catch(e){} this.persistSession(null); try{ location.reload(); }catch(e){} }};
+  }
+  // ---------- Financeiro: Fluxo de Caixa (só administradores; js/fluxo-caixa.js) ----------
+  fcCarregar(){
+    if(this.state.fcCarregando) return;
+    const local = fcLerLocal();
+    this.setState({fcCarregando:true, fc: this.state.fc || local || fcVazio()});
+    if(!API_BASE_URL){ this.setState({fcCarregando:false}); return; }
+    apiFetch("/api/fluxo").then(data=>{
+      if(!data || !Array.isArray(data.itens)) throw new Error("resposta inválida");
+      let fc = fcDeItens(data.itens);
+      // Primeira vez no servidor com lançamentos feitos neste navegador: envia a cópia local.
+      if(!data.itens.length && local){ fc = local; FC_COLECOES.forEach(c=>Object.keys(local[c]||{}).forEach(id=>this.fcApiSalvar(c, id, local[c][id]))); }
+      fcSalvarLocal(fc);
+      this.setState({fc, fcCarregando:false, fcAviso:""});
+    }).catch(()=>this.setState({fcCarregando:false, fcAviso:"O fluxo de caixa não está respondendo no servidor. Os lançamentos ficam só neste navegador até o server.js novo ser publicado."}));
+  }
+  fcApiSalvar(colecao, id, dados){
+    if(!API_BASE_URL) return;
+    apiFetch("/api/fluxo/" + colecao + "/" + encodeURIComponent(id), {method:"PUT", body:JSON.stringify({dados})})
+      .catch(()=>this.setState({fcAviso:"Não foi possível salvar no servidor. O lançamento ficou só neste navegador."}));
+  }
+  fcSalvar(colecao, id, dados){
+    const fc = {...(this.state.fc || fcVazio())};
+    fc[colecao] = {...fc[colecao], [id]: dados};
+    fcSalvarLocal(fc); this.setState({fc});
+    this.fcApiSalvar(colecao, id, dados);
+  }
+  fcExcluir(colecao, id){
+    const fc = {...(this.state.fc || fcVazio())};
+    const c = {...fc[colecao]}; delete c[id]; fc[colecao] = c;
+    fcSalvarLocal(fc); this.setState({fc});
+    if(API_BASE_URL) apiFetch("/api/fluxo/" + colecao + "/" + encodeURIComponent(id), {method:"DELETE"}).catch(()=>this.setState({fcAviso:"Não foi possível excluir no servidor."}));
+  }
+  fcConfig(){ const g = (this.state.fc && this.state.fc.config.geral) || {}; return {empresas: g.empresas && g.empresas.length ? g.empresas : FC_EMPRESAS_PADRAO, taxa: g.taxa==null ? FC_TAXA_PADRAO : g.taxa}; }
+  fcAddDespesa(){
+    const d = this.state.fcNd, cfg = this.fcConfig();
+    if(!d.hist.trim() || !(d.valorRaw>0)){ this.setState({fcAviso:"Informe o histórico e o valor da despesa."}); return; }
+    const id = fcId();
+    this.fcSalvar("despesas", id, {historico:d.hist.trim().toUpperCase(), valor:d.valorRaw, venc:d.venc||fcHojeISO(), empresa:d.emp||cfg.empresas[0], pago:false, criadoEm:new Date().toISOString()});
+    this.setState({fcNd:{...d, hist:"", valorRaw:0}, fcAviso:""});
+  }
+  fcAddAporte(){
+    const a = this.state.fcNa;
+    if(!a.hist.trim() || !a.data || !(a.valorRaw>0 || a.abatRaw>0)){ this.setState({fcAviso:"Informe o histórico, a data e o valor do aporte (ou o abatimento)."}); return; }
+    const nums = Object.values(this.state.fc.aportes).map(x=>parseInt(x.numero,10)).filter(n=>isFinite(n));
+    const id = fcId();
+    this.fcSalvar("aportes", id, {numero: a.num.trim() || String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2,"0"), investidor:(a.inv||"").trim().toUpperCase(),
+      historico:a.hist.trim().toUpperCase(), valor:a.valorRaw, abatimento:a.abatRaw, data:a.data, quitadoEm:a.quit||"", criadoEm:new Date().toISOString()});
+    this.setState({fcNa:{...a, num:"", hist:"", valorRaw:0, abatRaw:0, quit:""}, fcAviso:""});
+  }
+  fcAddControle(){
+    const nome = (this.state.fcNc||"").trim();
+    if(!nome){ this.setState({fcAviso:"Dê um nome ao controle (ex.: DANIEL - CARTÃO ITAÚ)."}); return; }
+    this.fcSalvar("controles", fcId(), {nome:nome.toUpperCase(), criadoEm:new Date().toISOString()});
+    this.setState({fcNc:"", fcAviso:""});
+  }
+  fcAddMov(cid){
+    const m = (this.state.fcNm||{})[cid] || {};
+    if(!(m.valorRaw>0 || m.abatRaw>0)){ this.setState({fcAviso:"Informe o valor ou o abatimento."}); return; }
+    this.fcSalvar("movs", fcId(), {controleId:cid, data:m.data||fcHojeISO(), historico:(m.hist||"").trim().toUpperCase(), valor:m.valorRaw||0, abatimento:m.abatRaw||0, criadoEm:new Date().toISOString()});
+    this.setState(st=>({fcNm:{...st.fcNm, [cid]:{data:m.data||fcHojeISO(), hist:"", valorRaw:0, abatRaw:0}}, fcAviso:""}));
+  }
+  // ----- Projeção de cartões (Faturas › Projeção de cartões) -----
+  // Cada fatura processada na Conferência de cartão grava as compras parceladas com parcelas a vencer.
+  // A projeção usa a fatura mais recente de cada cartão e só as compras da agência (ver ConfCartao.projetar).
+  cpVazio(){ return {faturas:{}, regras:{}, apelidos:{}}; }
+  cpId(txt){ return String(txt||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toUpperCase().replace(/[^A-Z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,100) || "X"; }
+  cpLerLocal(){ try{ const v = JSON.parse(localStorage.getItem(LS_CPROJ) || "null"); return v && v.faturas ? Object.assign(this.cpVazio(), v) : null; }catch(e){ return null; } }
+  cpSalvarLocal(cp){ try{ localStorage.setItem(LS_CPROJ, JSON.stringify(cp)); }catch(e){} }
+  cpCarregar(){
+    if(this.state.cpCarregando) return Promise.resolve();
+    const local = this.cpLerLocal();
+    this.setState({cpCarregando:true, cp: this.state.cp || local || this.cpVazio()});
+    if(!API_BASE_URL){ this.setState({cpCarregando:false}); return Promise.resolve(); }
+    return apiFetch("/api/cartao-projecao").then(data=>{
+      if(!data || !Array.isArray(data.itens)) throw new Error("resposta inválida");
+      const cp = this.cpVazio();
+      data.itens.forEach(i=>{ if(cp[i.colecao]) cp[i.colecao][i.id] = i.dados; });
+      // Primeira vez no servidor com faturas salvas neste navegador: envia a cópia local.
+      if(!data.itens.length && local) ["faturas","regras","apelidos"].forEach(c=>Object.keys(local[c]||{}).forEach(id=>{ cp[c][id] = local[c][id]; this.cpApiSalvar(c, id, local[c][id]); }));
+      this.cpSalvarLocal(cp);
+      this.setState({cp, cpCarregando:false, cpAviso:""});
+    }).catch(()=>this.setState({cpCarregando:false, cpAviso:"A projeção não está respondendo no servidor. As faturas ficam só neste navegador até o server.js novo ser publicado."}));
+  }
+  cpApiSalvar(colecao, id, dados){
+    if(!API_BASE_URL) return;
+    apiFetch("/api/cartao-projecao/" + colecao + "/" + encodeURIComponent(id), {method:"PUT", body:JSON.stringify({dados})})
+      .catch(()=>this.setState({cpAviso:"Não foi possível salvar a projeção no servidor. Ficou só neste navegador."}));
+  }
+  cpSalvar(colecao, id, dados){
+    this.setState(st=>{ const cp = {...(st.cp || this.cpVazio())}; cp[colecao] = {...cp[colecao], [id]:dados}; this.cpSalvarLocal(cp); return {cp}; });
+    this.cpApiSalvar(colecao, id, dados);
+  }
+  cpExcluir(colecao, id){
+    this.setState(st=>{ const cp = {...(st.cp || this.cpVazio())}; const c = {...cp[colecao]}; delete c[id]; cp[colecao] = c; this.cpSalvarLocal(cp); return {cp}; });
+    if(API_BASE_URL) apiFetch("/api/cartao-projecao/" + colecao + "/" + encodeURIComponent(id), {method:"DELETE"}).catch(()=>this.setState({cpAviso:"Não foi possível excluir no servidor."}));
+  }
+  cpMarcar(chave, valor){ const id = this.cpId(chave); if(valor) this.cpSalvar("regras", id, {chave, valor, em:new Date().toISOString()}); else this.cpExcluir("regras", id); }
+  cpRegras(){ const out = {}; Object.values((this.state.cp||{}).regras||{}).forEach(r=>{ if(r && r.chave) out[r.chave] = r.valor; }); return out; }
+  // Depois de Processar na conferência: monta o bloco "Projeção" e grava as faturas que têm vencimento.
+  ccMontarProjecao(res, fats){
+    const C = window.ConfCartao; if(!C || !res) return;
+    const apel = (this.state.cp||{}).apelidos||{}, regras = this.cpRegras();
+    const ccProj = fats.map(f=>{
+      const banco = C.detectBank(f.pages), meta = C.metaFatura(f.pages, banco);
+      const ls = res.linhas.filter(r=>r.arquivo===f.nome);
+      const salvo = apel[this.cpId(meta.apelido)];
+      return {arquivo:f.nome, banco, auto:meta.apelido, apelido: (salvo && salvo.nome) || meta.apelido, vencimento: meta.vencimento || "",
+        itens: C.parcelasDaFatura(ls), agenciaAtual: C.agenciaNaFatura(ls, regras), salvoId:""};
+    });
+    this.setState({ccProj}, ()=>ccProj.forEach((p,i)=>{ if(p.vencimento) this.ccProjGravar(i); }));
+  }
+  ccProjGravar(i){
+    const p = (this.state.ccProj||[])[i]; if(!p) return;
+    const apelido = String(p.apelido||"").trim() || p.auto;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(p.vencimento||"")) return;
+    const id = this.cpId(apelido) + "_" + p.vencimento.slice(0,7);
+    if(p.salvoId && p.salvoId!==id) this.cpExcluir("faturas", p.salvoId);
+    this.cpSalvar("faturas", id, {apelido, banco:p.banco, vencimento:p.vencimento, itens:p.itens, agenciaAtual:p.agenciaAtual, arquivo:p.arquivo, importadoEm:new Date().toISOString()});
+    if(apelido!==p.auto) this.cpSalvar("apelidos", this.cpId(p.auto), {auto:p.auto, nome:apelido});
+    this.setState(st=>({ccProj:(st.ccProj||[]).map((x,j)=>j===i ? {...x, apelido, salvoId:id} : x)}));
+  }
+  ccProjVals(s){
+    const C = window.ConfCartao, lista = s.ccProj||[], regras = this.cpRegras();
+    const fmt = n=>"R$ " + Number(n||0).toLocaleString("pt-BR",{minimumFractionDigits:2, maximumFractionDigits:2});
+    return {ccTemProj: !!lista.length && !!C,
+      ccProj: lista.map((p,i)=>{
+        const ag = p.itens.filter(it=>regras[it.chave] ? regras[it.chave]==="agencia" : it.viagem);
+        const pend = p.itens.filter(it=>!regras[it.chave] && !it.viagem).length;
+        const rest = ag.reduce((a,it)=>a + (it.N-it.n)*it.valor, 0);
+        const semVenc = !p.vencimento;
+        return {idA:"cp-apel-"+i, idV:"cp-venc-"+i, apelido:p.apelido, vencimento:p.vencimento,
+          resumo: ag.length ? ag.length + (ag.length===1 ? " compra parcelada" : " compras parceladas") + " · " + fmt(rest) + " a vencer" : "Nenhuma compra parcelada da agência",
+          pend: pend ? pend + " para revisar" : "", temPend: !!pend,
+          status: semVenc ? "Informe o vencimento" : p.salvoId ? "Na projeção ✓" : "Salvando…", statusCor: semVenc ? "#B42318" : "#027A48",
+          onApelido:(e)=>{ const v = e.target.value; this.setState(st=>({ccProj:st.ccProj.map((x,j)=>j===i ? {...x, apelido:v} : x)}), ()=>this.ccProjGravar(i)); },
+          onVenc:(e)=>{ const v = e.target.value; this.setState(st=>({ccProj:st.ccProj.map((x,j)=>j===i ? {...x, vencimento:v} : x)}), ()=>this.ccProjGravar(i)); }};
+      }),
+      ccIrProjecao:()=>{ this.flushCommits(); this.setState({modulo:"financeiro", view:"faturas", faturaSub:"projecao"}); this.cpCarregar(); }};
+  }
+  cpVals(){
+    const s = this.state, C = window.ConfCartao;
+    const isProj = this.viewEfetiva()==="faturas" && s.faturaSub==="projecao";
+    if(!isProj || !C) return {isFatProj:false};
+    if(!s.cp && !s.cpCarregando) setTimeout(()=>this.cpCarregar(), 0);
+    const cp = s.cp || this.cpVazio(), regras = this.cpRegras();
+    const regs = Object.entries(cp.faturas).map(([id,f])=>({...f, id}));
+    const P = C.projetar(regs, regras);
+    const pode = this.permAba("faturas")==="editar";
+    const num = n=>n ? Number(n).toLocaleString("pt-BR",{minimumFractionDigits:2, maximumFractionDigits:2}) : "–";
+    const moeda = n=>"R$ " + Number(n||0).toLocaleString("pt-BR",{minimumFractionDigits:2, maximumFractionDigits:2});
+    const MES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+    const mesLbl = m=>MES[+m.slice(5,7)-1] + "/" + m.slice(2,4);
+    const dBR = iso=>iso ? iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4) : "—";
+    const hoje = new Date(), mesAtual = hoje.getFullYear()+"-"+String(hoje.getMonth()+1).padStart(2,"0");
+    const futuros = P.meses.filter(m=>m>mesAtual), prox = futuros[0];
+    const soma3 = futuros.slice(0,3).reduce((a,m)=>a+P.porMes[m],0);
+    const pendRest = P.pendentes.reduce((a,i)=>a+i.totalRestante,0);
+    const linhaItem = (i, acao)=>({cartao:i.cartao, data:i.data||"—", desc:i.desc, parcela:i.n+"/"+i.N, valor:num(i.valor), restam:String(i.restantes),
+      totRest:num(i.totalRestante), ultima:mesLbl(i.ultimaEm), pode,
+      onAgencia:()=>this.cpMarcar(i.chave, "agencia"), onPessoal:()=>this.cpMarcar(i.chave, "pessoal"), onDesfazer:()=>this.cpMarcar(i.chave, null),
+      temRegra: !!i.regra, acao});
+    return {isFatProj:true, cpAviso:s.cpAviso||"", cpTemAviso:!!s.cpAviso,
+      cpVazio: !regs.length, cpTem: !!regs.length,
+      cpIrConferencia:()=>{ this.flushCommits(); this.setState({modulo:"financeiro", view:"conferencia"}, ()=>this.confTrocarTipo("cartao")); },
+      cpKpis:[
+        {label: prox ? "Próximo mês · " + mesLbl(prox) : "Próximo mês", valor: moeda(prox ? P.porMes[prox] : 0), cor:"#1D4ED8"},
+        {label:"Próximos 3 meses", valor: moeda(soma3), cor:"#111827"},
+        {label:"Total a vencer (agência)", valor: moeda(P.total), cor:"#111827"},
+        {label:"Aguardando revisão", valor: P.pendentes.length ? P.pendentes.length + " · " + moeda(pendRest) : "Nenhuma", cor: P.pendentes.length ? "#B54708" : "#027A48"}],
+      cpCab: [{t:"Cartão", al:"left"}, {t:"Última fatura", al:"left"}, {t:"Agência na fatura", al:"right"}].concat(P.meses.map(m=>({t:mesLbl(m), al:"right"})), [{t:"Total a vencer", al:"right"}]),
+      cpLinhas: P.cartoes.map(c=>({cel:[{t:c.apelido, al:"left", peso:"700", cor:"#111827"}, {t:dBR(c.vencimento), al:"left", peso:"500", cor:"#475569"}, {t:num(c.agenciaAtual), al:"right", peso:"500", cor:"#475569"}]
+        .concat(P.meses.map(m=>({t:num(c.porMes[m]), al:"right", peso:"500", cor: c.porMes[m] ? "#111827" : "#CBD5E1"})), [{t:num(c.total), al:"right", peso:"800", cor:"#111827"}])})),
+      cpRodape: [{t:"Total", al:"left"}, {t:"", al:"left"}, {t:num(P.cartoes.reduce((a,c)=>a+c.agenciaAtual,0)), al:"right"}].concat(P.meses.map(m=>({t:num(P.porMes[m]), al:"right"})), [{t:num(P.total), al:"right"}]),
+      cpTemPend: !!P.pendentes.length, cpPend: P.pendentes.map(i=>linhaItem(i)),
+      cpItens: P.itens.map(i=>linhaItem(i)), cpTemItens: !!P.itens.length, cpQtdItens: P.itens.length + (P.itens.length===1 ? " compra" : " compras"),
+      cpTemPessoais: !!P.pessoais.length, cpPessoais: P.pessoais.map(i=>linhaItem(i)), cpQtdPessoais: P.pessoais.length + " compra(s) marcadas como pessoais (fora da projeção)",
+      cpFaturas: regs.sort((a,b)=>a.apelido.localeCompare(b.apelido) || b.vencimento.localeCompare(a.vencimento)).map(f=>{
+        const usada = P.cartoes.some(c=>c.registro===f.id);
+        return {apelido:f.apelido, venc:dBR(f.vencimento), qtd:(f.itens||[]).length + " parceladas", importado: f.importadoEm ? new Date(f.importadoEm).toLocaleDateString("pt-BR") : "",
+          uso: usada ? "Usada na projeção" : "Substituída por fatura mais nova", usoCor: usada ? "#027A48" : "#98A2B3", pode,
+          onExcluir:()=>{ if(window.confirm("Tirar a fatura de " + f.apelido + " (vencimento " + dBR(f.vencimento) + ") da projeção?")) this.cpExcluir("faturas", f.id); }};
+      }),
+      cpExportar:()=>this.cpExportar(P, mesLbl)};
+  }
+  cpExportar(P, mesLbl){
+    if(!window.XLSX){ alert("Biblioteca de exportação ainda carregando, tente novamente."); return; }
+    const r2 = n=>Math.round((n||0)*100)/100;
+    const a1 = [["Cartão","Última fatura","Agência na fatura"].concat(P.meses.map(mesLbl), ["Total a vencer"])];
+    P.cartoes.forEach(c=>a1.push([c.apelido, c.vencimento, r2(c.agenciaAtual)].concat(P.meses.map(m=>r2(c.porMes[m])), [r2(c.total)])));
+    a1.push(["Total", "", r2(P.cartoes.reduce((a,c)=>a+c.agenciaAtual,0))].concat(P.meses.map(m=>r2(P.porMes[m])), [r2(P.total)]));
+    const a2 = [["Cartão","Data da compra","Descrição","Parcela atual","Valor da parcela","Parcelas restantes","Total restante","Última parcela"]];
+    P.itens.forEach(i=>a2.push([i.cartao, i.data, i.desc, i.n+"/"+i.N, r2(i.valor), i.restantes, r2(i.totalRestante), mesLbl(i.ultimaEm)]));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a1), "Projeção por mês");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(a2), "Parcelas da agência");
+    XLSX.writeFile(wb, "projecao-cartoes_" + new Date().toISOString().slice(0,10) + ".xlsx");
+  }
+  fcVals(){
+    const s = this.state;
+    if(this.moduloEfetivo()!=="financeiro" || this.viewEfetiva()!=="fluxocaixa") return {isFc:false};
+    if(!s.fc){ if(!s.fcCarregando) setTimeout(()=>this.fcCarregar(), 0); return {isFc:true, fcPronto:false, fcAviso:"Carregando…", fcTemAviso:true}; }
+    const fc = s.fc, cfg = this.fcConfig(), hoje = fcHojeISO(), M = v=>formatMoeda(v||0);
+    const seg = (on)=>({bg: on ? "#fff" : "transparent", fg: on ? "#1D4ED8" : "#475569", sombra: on ? "0 1px 2px rgba(16,24,40,.08)" : "none"});
+    const tabs = [["despesas","Despesas"],["aportes","Aportes"],["controles","Empréstimos e cartões"]].map(([id,label])=>({label, ...seg(s.fcSub===id), onClick:()=>this.setState({fcSub:id, fcAviso:""})}));
+    const out = {isFc:true, fcPronto:true, fcTabs:tabs, fcAviso:s.fcAviso, fcTemAviso:!!s.fcAviso,
+      isFcDesp: s.fcSub==="despesas", isFcAport: s.fcSub==="aportes", isFcCtrl: s.fcSub==="controles"};
+    // ----- Despesas -----
+    const filtros = [["aberto","Em aberto"],["dia","Dia"],["mes","Mês"],["todas","Todas"]];
+    const todas = Object.entries(fc.despesas).map(([id,d])=>({id, ...d}));
+    const lista = todas.filter(d=>{
+      if(s.fcEmp && d.empresa!==s.fcEmp) return false;
+      if(s.fcFiltro==="aberto") return !d.pago;
+      if(s.fcFiltro==="dia") return d.venc===s.fcDia;
+      if(s.fcFiltro==="mes") return (d.venc||"").slice(0,7)===s.fcMes;
+      return true;
+    }).sort((a,b)=>(a.venc||"").localeCompare(b.venc||"") || (a.historico||"").localeCompare(b.historico||""));
+    const total = lista.reduce((t,d)=>t+fcNum(d.valor),0), pagas = lista.filter(d=>d.pago).reduce((t,d)=>t+fcNum(d.valor),0);
+    const diaSaldo = s.fcFiltro==="dia" ? s.fcDia : hoje, temSaldo = s.fcFiltro==="aberto" || s.fcFiltro==="dia";
+    const saldoRec = fc.saldos[diaSaldo], saldo = saldoRec ? fcNum(saldoRec.valor) : 0;
+    const aPagar = total - pagas, final = saldo - (s.fcFiltro==="aberto" ? total : aPagar);
+    const porEmp = cfg.empresas.concat(Array.from(new Set(lista.map(d=>d.empresa))).filter(e=>!cfg.empresas.includes(e)))
+      .map(e=>({nome:e, valor:lista.filter(d=>d.empresa===e).reduce((t,d)=>t+fcNum(d.valor),0), qtd:lista.filter(d=>d.empresa===e).length})).filter(x=>x.qtd>0)
+      .map(x=>({nome:x.nome, valor:M(x.valor), qtd:x.qtd + (x.qtd===1 ? " despesa" : " despesas")}));
+    const nd = s.fcNd;
+    Object.assign(out, {
+      fcFiltros: filtros.map(([id,label])=>({label, ...seg(s.fcFiltro===id), onClick:()=>this.setState({fcFiltro:id})})),
+      fcMostraDia: s.fcFiltro==="dia", fcMostraMes: s.fcFiltro==="mes", fcDia: s.fcDia, fcMes: s.fcMes,
+      onFcDia:(e)=>{ if(e.target.value) this.setState({fcDia:e.target.value}); }, onFcMes:(e)=>{ if(e.target.value) this.setState({fcMes:e.target.value}); },
+      fcEmpOpts: [{value:"", label:"Todas as empresas"}].concat(cfg.empresas.map(e=>({value:e, label:e}))), fcEmp: s.fcEmp, onFcEmp:(e)=>this.setState({fcEmp:e.target.value}),
+      fcTotal: M(total), fcQtd: lista.length + (lista.length===1 ? " despesa" : " despesas"), fcPagas: M(pagas), fcAPagar: M(aPagar),
+      fcTemSaldo: temSaldo, fcSaldoLabel: "Saldo em " + fcData(diaSaldo), fcSaldo: M(saldo),
+      onFcSaldo:(e)=>{ const v = parseMoedaInput(e.target.value); this.setState(st=>({fcEdit:{...st.fcEdit, saldo:{dia:diaSaldo, v}}})); },
+      fcSaldoInput: s.fcEdit.saldo && s.fcEdit.saldo.dia===diaSaldo ? M(s.fcEdit.saldo.v) : M(saldo),
+      onFcSaldoBlur:()=>{ const e = this.state.fcEdit.saldo; if(e && e.dia===diaSaldo){ this.fcSalvar("saldos", diaSaldo, {valor:e.v, dia:diaSaldo}); this.setState(st=>({fcEdit:{...st.fcEdit, saldo:null}})); } },
+      fcFinal: M(final), fcFinalCor: final<0 ? "#B42318" : "#027A48", fcFinalLabel: s.fcFiltro==="aberto" ? "Final (saldo − em aberto)" : "Final (saldo − a pagar)",
+      fcPorEmp: porEmp, fcTemPorEmp: porEmp.length>0,
+      fcLinhas: lista.map(d=>{ const venc = !d.pago && d.venc && d.venc < hoje;
+        return {hist:d.historico, valor:M(d.valor), venc:fcData(d.venc), vencCor: venc ? "#B42318" : "#374151", vencPeso: venc ? "700" : "500", empresa:d.empresa,
+          pagoLabel: d.pago ? "Paga" : "Em aberto", pagoBg: d.pago ? "#ECFDF3" : "#FFFBEB", pagoFg: d.pago ? "#027A48" : "#B45309", bg: d.pago ? "#FAFBFD" : "#fff",
+          onPago:()=>this.fcSalvar("despesas", d.id, {...fc.despesas[d.id], pago:!d.pago, pagoEm: d.pago ? "" : hoje}),
+          onExcluir:()=>{ if(window.confirm("Excluir a despesa \"" + d.historico + "\"?")) this.fcExcluir("despesas", d.id); }}; }),
+      fcVazio: lista.length===0,
+      fcNdHist: nd.hist, onFcNdHist:(e)=>{ const v = e.target.value; this.setState(st=>({fcNd:{...st.fcNd, hist:v}})); },
+      fcNdValor: M(nd.valorRaw), onFcNdValor:(e)=>{ const v = parseMoedaInput(e.target.value); this.setState(st=>({fcNd:{...st.fcNd, valorRaw:v}})); },
+      fcNdVenc: nd.venc, onFcNdVenc:(e)=>{ const v = e.target.value; this.setState(st=>({fcNd:{...st.fcNd, venc:v}})); },
+      fcNdEmp: nd.emp || cfg.empresas[0], fcNdEmpOpts: cfg.empresas.map(e=>({value:e, label:e})), onFcNdEmp:(e)=>{ const v = e.target.value; this.setState(st=>({fcNd:{...st.fcNd, emp:v}})); },
+      onFcAddDesp:()=>this.fcAddDespesa(), onFcNdKey:(e)=>{ if(e.key==="Enter") this.fcAddDespesa(); },
+      fcEmpChips: cfg.empresas.map(e=>({nome:e, onRemover:()=>{ if(cfg.empresas.length>1) this.fcSalvar("config", "geral", {...cfg, empresas:cfg.empresas.filter(x=>x!==e)}); }})),
+      fcNovaEmp: s.fcNovaEmp, onFcNovaEmp:(e)=>this.setState({fcNovaEmp:e.target.value}),
+      onFcAddEmp:()=>{ const n = (this.state.fcNovaEmp||"").trim().toUpperCase(); if(n && !cfg.empresas.includes(n)){ this.fcSalvar("config", "geral", {...cfg, empresas:cfg.empresas.concat(n)}); } this.setState({fcNovaEmp:""}); },
+    });
+    // ----- Aportes -----
+    const ref = s.fcRef || hoje, taxa = cfg.taxa;
+    const aps = Object.entries(fc.aportes).map(([id,a])=>({id, ...a, ...fcCalcAporte(a, ref, taxa)}));
+    const invs = Array.from(new Set(aps.map(a=>a.investidor).filter(Boolean))).sort();
+    const apsF = aps.filter(a=>!s.fcInv || a.investidor===s.fcInv).sort((a,b)=>(parseInt(a.numero,10)||0)-(parseInt(b.numero,10)||0) || (a.data||"").localeCompare(b.data||""));
+    const soma = k=>apsF.reduce((t,a)=>t+fcNum(a[k]),0);
+    const na = s.fcNa, ed = s.fcEdit;
+    Object.assign(out, {
+      fcRef: ref, onFcRef:(e)=>{ if(e.target.value) this.setState({fcRef:e.target.value}); },
+      fcTaxa: ed.taxa!=null ? ed.taxa : String(taxa).replace(".", ","), onFcTaxa:(e)=>{ const v = e.target.value; this.setState(st=>({fcEdit:{...st.fcEdit, taxa:v}})); },
+      onFcTaxaBlur:()=>{ const v = this.state.fcEdit.taxa; if(v!=null){ const n = parseFloat(String(v).replace(",", ".")); if(isFinite(n) && n>=0) this.fcSalvar("config", "geral", {...cfg, taxa:n}); this.setState(st=>({fcEdit:{...st.fcEdit, taxa:null}})); } },
+      fcInvOpts: [{value:"", label:"Todos os investidores"}].concat(invs.map(i=>({value:i, label:i}))), fcInv: s.fcInv, onFcInv:(e)=>this.setState({fcInv:e.target.value}),
+      fcApTotValor: M(soma("valor")), fcApTotAbat: M(soma("abatimento")), fcApTotCorr: M(soma("correcao")), fcApTotal: M(soma("total")),
+      fcApTotalLabel: (s.fcInv ? s.fcInv + " · " : "") + "Total em " + fcData(ref),
+      fcApLinhas: apsF.map(a=>{ const k = "ab-"+a.id, kq = "q-"+a.id, quit = Math.abs(a.total) < 0.05 && (a.abatimento>0);
+        return {num:a.numero, hist:a.historico, inv:a.investidor, valor:M(a.valor), data:fcData(a.data), dias:a.dias, correcao:M(a.correcao), total:M(a.total),
+          totalCor: a.total<0 ? "#B42318" : "#111827", bg: quit ? "#EEF6FC" : "#fff",
+          abat: ed[k]!=null ? M(ed[k]) : M(a.abatimento),
+          onAbat:(e)=>{ const v = parseMoedaInput(e.target.value); this.setState(st=>({fcEdit:{...st.fcEdit, [k]:v}})); },
+          onAbatBlur:()=>{ const v = this.state.fcEdit[k]; if(v!=null){ this.fcSalvar("aportes", a.id, {...fc.aportes[a.id], abatimento:v}); this.setState(st=>({fcEdit:{...st.fcEdit, [k]:null}})); } },
+          quit: a.quitadoEm || "", onQuit:(e)=>this.fcSalvar("aportes", a.id, {...fc.aportes[a.id], quitadoEm:e.target.value||""}),
+          onExcluir:()=>{ if(window.confirm("Excluir o aporte " + a.numero + "?")) this.fcExcluir("aportes", a.id); }}; }),
+      fcApVazio: apsF.length===0,
+      fcNaNum: na.num, onFcNaNum:(e)=>{ const v = e.target.value; this.setState(st=>({fcNa:{...st.fcNa, num:v}})); },
+      fcNaInv: na.inv, onFcNaInv:(e)=>{ const v = e.target.value; this.setState(st=>({fcNa:{...st.fcNa, inv:v}})); },
+      fcNaHist: na.hist, onFcNaHist:(e)=>{ const v = e.target.value; this.setState(st=>({fcNa:{...st.fcNa, hist:v}})); },
+      fcNaValor: M(na.valorRaw), onFcNaValor:(e)=>{ const v = parseMoedaInput(e.target.value); this.setState(st=>({fcNa:{...st.fcNa, valorRaw:v}})); },
+      fcNaAbat: M(na.abatRaw), onFcNaAbat:(e)=>{ const v = parseMoedaInput(e.target.value); this.setState(st=>({fcNa:{...st.fcNa, abatRaw:v}})); },
+      fcNaData: na.data, onFcNaData:(e)=>{ const v = e.target.value; this.setState(st=>({fcNa:{...st.fcNa, data:v}})); },
+      fcNaQuit: na.quit, onFcNaQuit:(e)=>{ const v = e.target.value; this.setState(st=>({fcNa:{...st.fcNa, quit:v}})); },
+      onFcAddAporte:()=>this.fcAddAporte(),
+    });
+    // ----- Empréstimos e cartões -----
+    const movs = Object.entries(fc.movs).map(([id,m])=>({id, ...m}));
+    const ctrls = Object.entries(fc.controles).map(([id,c])=>({id, ...c})).sort((a,b)=>(a.nome||"").localeCompare(b.nome||""));
+    let saldoGeral = 0;
+    const fcCtrls = ctrls.map(c=>{
+      const r = fcCalcControle(movs.filter(m=>m.controleId===c.id)); saldoGeral += r.saldo;
+      const nm = (s.fcNm||{})[c.id] || {data:hoje, hist:"", valorRaw:0, abatRaw:0};
+      const setNm = (campo, v)=>this.setState(st=>({fcNm:{...st.fcNm, [c.id]:{...((st.fcNm||{})[c.id] || {data:hoje, hist:"", valorRaw:0, abatRaw:0}), [campo]:v}}}));
+      return {id:c.id, nome:c.nome, saldo:M(r.saldo), saldoCor: r.saldo>0 ? "#B42318" : "#027A48", totValor:M(r.totalValor), totAbat:M(r.totalAbat),
+        linhas: r.linhas.map(m=>({data:fcData(m.data), hist:m.historico||"—", valor: m.valor ? M(m.valor) : "—", abat: m.abatimento ? M(m.abatimento) : "—", saldo:M(m.saldo),
+          onExcluir:()=>{ if(window.confirm("Excluir este lançamento?")) this.fcExcluir("movs", m.id); }})),
+        vazio: r.linhas.length===0,
+        nData: nm.data, nHist: nm.hist, nValor: M(nm.valorRaw), nAbat: M(nm.abatRaw),
+        onData:(e)=>setNm("data", e.target.value), onHist:(e)=>setNm("hist", e.target.value),
+        onValor:(e)=>setNm("valorRaw", parseMoedaInput(e.target.value)), onAbat:(e)=>setNm("abatRaw", parseMoedaInput(e.target.value)),
+        onAdd:()=>this.fcAddMov(c.id),
+        onExcluir:()=>{ if(window.confirm("Excluir o controle \"" + c.nome + "\" e todos os lançamentos dele?")){ movs.filter(m=>m.controleId===c.id).forEach(m=>this.fcExcluir("movs", m.id)); this.fcExcluir("controles", c.id); } }};
+    });
+    Object.assign(out, {fcCtrls, fcCtrlVazio: fcCtrls.length===0, fcCtrlSaldo: M(saldoGeral), fcCtrlQtd: fcCtrls.length + (fcCtrls.length===1 ? " controle" : " controles"),
+      fcNc: s.fcNc, onFcNc:(e)=>this.setState({fcNc:e.target.value}), onFcAddCtrl:()=>this.fcAddControle(), onFcNcKey:(e)=>{ if(e.key==="Enter") this.fcAddControle(); }});
+    return out;
+  }
   // ---------- Conferência: Faturas Cartão de Crédito (js/conferencia-cartao.js) ----------
   // A leitura dos PDFs é toda no navegador: faturas e relatório não vão ao servidor.
   ccAddArquivos(tipo, e){
@@ -4069,7 +5000,8 @@ class Component extends DCLogic {
     if(!v || v.status!=="ok" || !fat.length) return;
     try{
       const res = ConfCartao.processarConferencia({faturas: fat.map(f=>({nome:f.nome, pages:f.pages})), vendasPages: v.pages, palavrasViagem: s.ccKw==null ? ConfCartao.DEFAULT_KW : s.ccKw});
-      this.setState({ccRes:res, ccMostrar:300, ccErro: res.linhas.length ? "" : "Nenhum lançamento encontrado nas faturas. Confira se o PDF é uma fatura de cartão de um dos bancos com layout pronto."});
+      this.setState({ccRes:res, ccMostrar:300, ccProj:[], ccErro: res.linhas.length ? "" : "Nenhum lançamento encontrado nas faturas. Confira se o PDF é uma fatura de cartão de um dos bancos com layout pronto."});
+      if(res.linhas.length){ const ft = fat.map(f=>({nome:f.nome, pages:f.pages})); Promise.resolve(this.state.cp ? null : this.cpCarregar()).then(()=>this.ccMontarProjecao(res, ft)); }
     }catch(err){ this.setState({ccRes:null, ccErro:"Não foi possível processar: " + ((err && err.message) || err)}); }
   }
   ccFiltroAtual(){ return this.state.ccFiltro || {ok:true, div:true, prov:true, nf:true, semcod:true, estorn:true, ign:true}; }
@@ -4152,11 +5084,11 @@ class Component extends DCLogic {
       ccResLinhas.push({bg:"#F8FAFD", cel:[{t:"Total", alinha:"left", cor:"#111827", peso:"800"}, celN(rfs.reduce((a,f)=>a+(f.totalPdf||0),0)), {t:"", alinha:"right", cor:"#374151", peso:"500"}]
         .concat(K.map(k=>celN(soma(k), ["juros","multa","iof"].includes(k))), [celN(rfs.reduce((a,f)=>a+enc(f),0), true), {t:"", alinha:"left", cor:"#374151", peso:"500"}])}); }
     const vendaLbl = r=>{ const vs = r.vendas||[]; return vs.slice(0,3).map(x=>{ const sv = ind.byVenda && ind.byVenda.get(x); return x + (sv && sv.data ? " (" + sv.data.slice(0,5) + ")" : ""); }).join(", ") + (vs.length>3 ? " …" : ""); };
-    return Object.assign(out, {ccPronto:true,
+    return Object.assign(out, this.ccProjVals(s), {ccPronto:true,
       ccNcs: arqs.map((a,i)=>{ const b = bancoDe(a), rep = arqs.filter(x=>bancoDe(x)===b).length>1;
         return {id:"cc-nc-"+i, label:"NC · " + (rep || b==="Outro" ? a.replace(/\.pdf$/i,"") : b), valor:(s.ccNc||{})[a]||"",
           onChange:(e)=>{ const val = e.target.value; this.setState(st=>({ccNc:{...(st.ccNc||{}), [a]:val}})); }}; }),
-      ccLimpar:()=>this.setState({ccFaturas:[], ccVendas:null, ccRes:null, ccNc:{}, ccErro:"", ccMostrar:300}),
+      ccLimpar:()=>this.setState({ccFaturas:[], ccVendas:null, ccRes:null, ccNc:{}, ccErro:"", ccMostrar:300, ccProj:[]}),
       ccExportar:()=>this.ccExportar(),
       ccChips: ORDEM.map(k=>({label:SIT[k], qtd:qtd[k], valor:"R$ " + fmt(val[k]), ponto:COR[k][2], ativo:!!filtro[k],
         borda: filtro[k] ? "#BFD0FB" : "#E3E8F3", fundo: filtro[k] ? "#fff" : "#F8FAFD", opac: filtro[k] ? 1 : .6,
@@ -4207,7 +5139,9 @@ class Component extends DCLogic {
       confTemMais: idx.length>lim, confRestantes: Math.max(0, idx.length-lim), confMais:()=>this.setState({confMostrar:lim+300}),
     });
   }
-  renderVals(){ const d = this.renderValsDre(); return {...d, ...this.portalVals(d), ...this.comVals(), ...this.impVals(), ...this.confVals(), ...this.fdVals(), showFinTopo: !["conferencia","fatdiario"].includes(this.viewEfetiva())}; }
+  renderVals(){
+    if((this.state.units[this.state.opIndex]||{}).ativo===false && !this._guardOp){ this._guardOp = true; setTimeout(()=>{ this._guardOp = false; this.garantirOpAtiva(); }, 0); }
+    const d = this.renderValsDre(); return {...d, ...this.portalVals(d), ...this.comVals(), ...this.impVals(), ...this.confVals(), ...this.fdVals(), ...this.fcVals(), ...this.cpVals(), ...this.previaVals(), versaoTexto: "v" + VERSAO_SISTEMA + " · " + VERSAO_DATA.split("-").reverse().join("/"), versaoCurta: "v" + VERSAO_SISTEMA, showFinTopo: !["conferencia","fatdiario","fluxocaixa"].includes(this.viewEfetiva())}; }
   // ---------- Financeiro: faturamento diário ----------
   fdEmpresa(){ return FD_EMPRESAS.find(e=>e.id===this.state.fdEmp) || FD_EMPRESAS[0]; }
   fdLocal(){ try{ return JSON.parse(localStorage.getItem(LS_FD)||"{}") || {}; }catch(e){ return {}; } }
@@ -4245,10 +5179,26 @@ class Component extends DCLogic {
       comps.forEach(c=>{
         const ant = st.fdDados[emp.id+"|"+c];
         const presentes = new Set(); Object.values(r.porComp[c]).forEach(d=>Object.keys(d).forEach(s=>presentes.add(s)));
-        this.fdSalvar(emp.id, c, {dias:r.porComp[c], setores:r.setores.filter(s=>presentes.has(s)), arquivo:f.name, importadoEm:new Date().toISOString(), corte: ant ? ant.corte : undefined}, "importou planilha");
+        let dias = r.porComp[c], setores = r.setores.filter(s=>presentes.has(s));
+        if(r.parcial && ant && ant.dias){
+          // PDF de um setor: substitui só esse(s) setor(es) dentro do período do relatório; o resto do mês fica como estava.
+          const ini = r.periodo ? r.periodo.ini : c+"-01", fim = r.periodo ? r.periodo.fim : c+"-31";
+          const novo = {};
+          Object.entries(ant.dias).forEach(([dia, sx])=>{ const m = {}; Object.entries(sx).forEach(([se, v])=>{ if(!(presentes.has(se) && dia>=ini && dia<=fim)) m[se] = v; }); if(Object.keys(m).length) novo[dia] = m; });
+          Object.entries(dias).forEach(([dia, sx])=>{ novo[dia] = {...(novo[dia]||{}), ...sx}; });
+          const ordem = emp.setores.concat((ant.setores||[]).concat(setores).filter(x=>!emp.setores.includes(x)));
+          dias = novo; setores = ordem.filter(se=>(ant.setores||[]).includes(se) || presentes.has(se));
+        }
+        // PDF: os dias apurados acompanham o fim do período do relatório (ex.: até 18/11 → 18 dias).
+        let corte = ant ? ant.corte : undefined;
+        if(r.parcial && r.periodo && r.periodo.fim.slice(0,7)===c){ const dFim = +r.periodo.fim.slice(8,10); corte = Math.max(parseInt(corte,10)||0, dFim); }
+        this.fdSalvar(emp.id, c, {dias, setores, arquivo:f.name, importadoEm:new Date().toISOString(), corte}, r.parcial ? "importou PDF Faturamento Líquido" : "importou planilha");
       });
       const alvo = comps.includes(st.fdComp) ? st.fdComp : comps[comps.length-1];
-      this.setState({fdComp:alvo, fdDraft:{}, fdMsg:"Planilha importada: "+comps.length+(comps.length===1?" mês":" meses")+" ("+comps.map(c=>c.slice(5)+"/"+c.slice(0,4)).join(", ")+")."});
+      const dBR = iso=>iso.slice(8,10)+"/"+iso.slice(5,7);
+      this.setState({fdComp:alvo, fdDraft:{}, fdMsg: r.parcial
+        ? "Relatório importado: " + r.vendas + " vendas em " + r.setores.join(", ") + (r.periodo ? " (" + dBR(r.periodo.ini) + " a " + dBR(r.periodo.fim) + ")" : "") + ". Os demais setores não foram alterados."
+        : "Planilha importada: "+comps.length+(comps.length===1?" mês":" meses")+" ("+comps.map(c=>c.slice(5)+"/"+c.slice(0,4)).join(", ")+")."});
     }).catch(err=>this.setState({fdMsg:"", fdErro:err.message}));
   }
   fdImagem(modo){
@@ -4279,7 +5229,7 @@ class Component extends DCLogic {
     const [y, m] = comp.split("-").map(Number), nd = new Date(y, m, 0).getDate();
     const setores = ((dados && dados.setores && dados.setores.length) ? dados.setores : emp.setores).slice();
     Object.values(dias).forEach(d=>Object.keys(d).forEach(n=>{ if(!setores.includes(n)) setores.push(n); }));
-    const excl = emp.excluir || []; for(let i=setores.length-1;i>=0;i--) if(excl.includes(setores[i])) setores.splice(i,1);
+    for(let i=setores.length-1;i>=0;i--) if(fdExcluido(emp, setores[i])) setores.splice(i,1);
     this._fdUlt = {emp, comp, setores, dias};
     const apur = fdDiasApurados(comp, dados ? dados.corte : null);
     this._fdUlt.apur = apur; this._fdUlt.nd = nd;
@@ -4310,15 +5260,20 @@ class Component extends DCLogic {
       cells.push({texto:true, txt:num(cons.t), cor: cons.t ? "#111827" : "#CBD5E1", peso:"700", borda:"2px solid #C7D2FE"});
       if(emp.temDU){ cells.push({texto:true, txt:num(cons.du), cor:cons.du ? "#111827" : "#CBD5E1", peso:"700", borda:B}); cells.push({texto:true, txt:pct(cons.du, cons.t), cor:"#64748B", peso:"600", borda:B}); }
       linhas.push({data:String(i).padStart(2,"0")+"/"+String(m).padStart(2,"0"), sem:FD_SEMANA[wd], semCor:[0,6].includes(wd) ? "#B42318" : "#94A3B8",
-        bg: futuro ? "#FBFCFE" : [0,6].includes(wd) ? "#F8FAFD" : "#fff", opac: futuro ? ".55" : "1", cells});
+        bg: futuro ? "#FBFCFE" : "#fff", opac: futuro ? ".55" : "1", cells});
     }
     const fator = apur ? nd/apur : 0;
     const linhaRodape = (label, fn, destaque)=>{ const cells = [];
       setores.concat(["__c"]).forEach((n, si)=>{ const x = n==="__c" ? totC : tot[n], r = fn(x), bc = n==="__c" ? "2px solid #C7D2FE" : si ? "2px solid #E3E8F3" : B;
         cells.push({txt:r[0], borda:bc}); if(emp.temDU){ cells.push({txt:r[1], borda:B}); cells.push({txt:r[2], borda:B}); } });
-      return {label, cells, bg: destaque ? "#EEF3FF" : "#F8FAFC", cor: destaque ? "#1D4ED8" : "#111827"}; };
-    const rodape = [linhaRodape("Total", x=>[num(x.t), num(x.du), pct(x.du, x.t)]),
-      linhaRodape("Projeção do mês", x=>[num(x.t*fator), num(x.du*fator), pct(x.du, x.t)], true)];
+      // destaque: "total" (faixa escura) e "proj" (faixa azul), maiores que as linhas do dia; demais rodapés discretos.
+      const est = destaque==="total" ? {bg:"#111827", cor:"#fff", tam:"14px", pad:"12px 12px", borda:"3px solid #111827"}
+        : destaque==="proj" || destaque===true ? {bg:"#1D4ED8", cor:"#fff", tam:"14px", pad:"12px 12px", borda:"1px solid #1D4ED8"}
+        : {bg:"#F8FAFC", cor:"#111827", tam:"12.5px", pad:"8px 10px", borda:"1px solid #E3E8F3"};
+      if(destaque) cells.forEach(c=>{ c.borda = "1px solid rgba(255,255,255,.18)"; });
+      return {label, cells, ...est}; };
+    const rodape = [linhaRodape("Total", x=>[num(x.t), num(x.du), pct(x.du, x.t)], "total"),
+      linhaRodape("Projeção do mês", x=>[num(x.t*fator), num(x.du*fator), pct(x.du, x.t)], "proj")];
     if(!emp.temDU){
       rodape.push(linhaRodape("Royalties ("+(emp.royalties*100)+"%)", x=>[num(x.t*fator*emp.royalties)]));
       rodape.push(linhaRodape("Marketing ("+(emp.marketing*100)+"%)", x=>[num(x.t*fator*emp.marketing)]));
@@ -4359,7 +5314,7 @@ class Component extends DCLogic {
       fdApur: String(apur), fdOnApur:(e)=>{ const v = e.target.value, d2 = base(); d2.corte = v==="" ? undefined : Math.max(0, Math.min(nd, parseInt(v,10)||0)); this.fdSalvar(emp.id, comp, d2); },
       fdNd: nd, fdApurAuto: !(dados && dados.corte!=null),
       fdOnImportar:(e)=>this.fdImportar(e),
-      fdOrigem: dados && dados.arquivo ? "Planilha "+dados.arquivo+(quando?" · importada em "+quando:"") : dados ? "Valores digitados" : "Nenhum valor lançado neste mês.",
+      fdOrigem: dados && dados.arquivo ? (/\.pdf$/i.test(dados.arquivo) ? "Relatório " : "Planilha ")+dados.arquivo+(quando?" · importada em "+quando:"") : dados ? "Valores digitados" : "Nenhum valor lançado neste mês.",
       fdMsg: s.fdMsg||"", fdTemMsg: !!s.fdMsg, fdErro: s.fdErro||"", fdTemErro: !!s.fdErro,
       fdPodeLimpar: pode && !!dados,
       fdLimpar:()=>{ if(!window.confirm("Apagar os valores de "+emp.label+" em "+comp.slice(5)+"/"+comp.slice(0,4)+"?")) return; this.fdSalvar(emp.id, comp, {dias:{}, setores:emp.setores.slice()}, "limpou o mês"); this.setState({fdMsg:"Mês limpo."}); },
@@ -4416,7 +5371,7 @@ class Component extends DCLogic {
         };
       });
       categories = CATEGORIES.map(cat=>{
-        const staticDefs = DETAIL_ROWS.filter(d=>d.cat===cat.key && (!d.tipo || d.tipo===unit.tipo));
+        const staticDefs = DETAIL_ROWS.filter(d=>d.cat===cat.key && (linhaDaOperacao(d, unit) || (!d.tipo && getVal(unit,d.id,s.year,s.month))));
         const mkRow = (id,label,isCustom)=>{
           const lockKey = `${unit.name}:${id}`;
           const lock = s.locks[lockKey];
@@ -4440,7 +5395,8 @@ class Component extends DCLogic {
     }
     let opSummaryRows=[], detailCategories=[];
     if(isConsolidacao){
-      const results = s.units.map(u=>computeUnitMonth(u,s.year,s.month));
+      const ua = s.units.filter(u=>u.ativo!==false); // operações desativadas ficam fora da consolidação
+      const results = ua.map(u=>computeUnitMonth(u,s.year,s.month));
       const g = sumResults(results);
       kpis = [
         {label:"Faturamento", value:formatBRL(g.faturamento), color:"#111827", icon:"▤"},
@@ -4450,7 +5406,7 @@ class Component extends DCLogic {
       ];
       const rowGrid = {display:"grid", gridTemplateColumns:"28px 2fr repeat(5, 1fr)", gap:"10px", alignItems:"center", padding:"10px 0", borderBottom:"1px solid #F4F6FB"};
       opSummaryRows = [
-        ...s.units.map((u,i)=>{
+        ...ua.map((u,i)=>{
           const r = results[i];
           return {dot:u.cor, name:u.name, isTotal:false, rowStyle:rowGrid, nameStyle:{fontSize:"13.5px",color:"#111827",fontWeight:400},
             faturamento:formatBRL(r.faturamento), receita:formatBRL(r.receita),
@@ -4465,19 +5421,19 @@ class Component extends DCLogic {
           margem:formatPct(g.margem), margemColor: g.margem>=0?"#16A34A":"#DC2626"},
       ];
       detailCategories = CATEGORIES.map(cat=>{
-        let lineItems = DETAIL_ROWS.filter(d=>d.cat===cat.key).map(d=>({label:d.label, vals:s.units.map(u=>getVal(u,d.id,s.year,s.month))}));
+        let lineItems = DETAIL_ROWS.filter(d=>d.cat===cat.key).map(d=>({label:d.label, vals:ua.map(u=>getVal(u,d.id,s.year,s.month))}));
         if(cat.key==="passivo" || cat.key==="outras_despesas"){
           // Um item manual com o mesmo nome tem id próprio em cada loja. Agrupa por
           // nome para render uma linha só, com o valor de cada loja na sua coluna.
           const pega = cat.key==="passivo" ? getPeriodCredores : getPeriodOutras;
           const nomes = [], idsPorNome = new Map();
-          s.units.forEach((u,i)=>pega(u,s.year,s.month).forEach(cr=>{
-            if(!idsPorNome.has(cr.label)){ idsPorNome.set(cr.label, s.units.map(()=>[])); nomes.push(cr.label); }
+          ua.forEach((u,i)=>pega(u,s.year,s.month).forEach(cr=>{
+            if(!idsPorNome.has(cr.label)){ idsPorNome.set(cr.label, ua.map(()=>[])); nomes.push(cr.label); }
             idsPorNome.get(cr.label)[i].push(cr.id);
           }));
           nomes.forEach(nome=>{
             const idsPorLoja = idsPorNome.get(nome);
-            lineItems.push({label:nome, vals:s.units.map((u,i)=>idsPorLoja[i].reduce((a,id)=>a+getVal(u,id,s.year,s.month),0))});
+            lineItems.push({label:nome, vals:ua.map((u,i)=>idsPorLoja[i].reduce((a,id)=>a+getVal(u,id,s.year,s.month),0))});
           });
         }
         const items = lineItems.map(li=>{
@@ -4655,7 +5611,7 @@ class Component extends DCLogic {
       };
     });
     const isFatAdm = isContasAdm;
-    const lojaNomes = s.units.map(u=>u.name);
+    const lojaNomes = s.units.filter(u=>u.ativo!==false).map(u=>u.name);
     const admLojasUsadas = Array.from(new Set(lojaNomes.concat(s.adm.map(a=>a.loja).filter(Boolean))));
     const admTiposUsados = Array.from(new Set(s.admTipos.concat(s.adm.map(a=>a.tipo).filter(Boolean))));
     const admFiltros = {
@@ -4702,6 +5658,9 @@ class Component extends DCLogic {
         onLoja: (e)=>this.patchAdm(a.id, {loja: e.target.value}),
         onVenc: (e)=>this.patchAdm(a.id, {venc: e.target.value}),
         onRemove: ()=>this.removeAdm(a.id),
+        noDre: !!a.dre, semDre: !a.dre,
+        dreTxt: a.dre ? "No DRE · " + (DETAIL_ROWS.find(x=>x.id===a.dre.codigo)||{label:a.dre.codigo}).label + " · " + String(a.dre.mes).padStart(2,"0") + "/" + String(a.dre.ano).slice(2) : "",
+        onLancarDre: ()=>this.admLancarNoDre(a.id),
       };
     });
     const recLista = fatBase.filter(f=>f.mov==="receber")
@@ -4802,10 +5761,10 @@ class Component extends DCLogic {
       recResumo: recOk + " de " + recRows.length + " confirmados",
       recPct: (recRows.length ? Math.round(recOk/recRows.length*100) : 0) + "%",
       recPendenteValor: formatMoeda(recPend),
-      isFatLanc: isFaturas && !isFatCheck && !["recebimentos","apuracao","cadastros"].includes(s.faturaSub), isFatCheck,
+      isFatLanc: isFaturas && !isFatCheck && !["recebimentos","apuracao","cadastros","projecao"].includes(s.faturaSub), isFatCheck,
       isFatRec: isFaturas && s.faturaSub==="recebimentos", isFatApur: isFaturas && s.faturaSub==="apuracao", isFatCad: isFaturas && s.faturaSub==="cadastros",
       recVazio: recRows.length===0, apurVazio: faturaResumoRows.length===0,
-      fatMostraComp: isFaturas && !isFatCheck && s.faturaSub!=="cadastros",
+      fatMostraComp: isFaturas && !isFatCheck && s.faturaSub!=="cadastros" && s.faturaSub!=="projecao",
       fatFormAberto: !!s.fatFormAberto, fatFormBtn: s.fatFormAberto ? "Fechar" : "+ Nova fatura",
       onToggleFatForm: ()=>this.setState(p=>({fatFormAberto: !p.fatFormAberto})),
       fatTabs: (()=>{
@@ -4828,7 +5787,7 @@ class Component extends DCLogic {
       admReplicarTitle: "Copia as contas de " + compLabelISO(compShift(s.admComp || hojeComp, -1)) + " para " + compLabelISO(s.admComp || hojeComp) + ", em aberto",
       setFatSubAdm: ()=>{ this.setState({faturaSub:"adm"}); this.carregarAdm(); },
       fatSubAdmStyle: isFatAdm ? segOn : segOff,
-      admAlertaQtd, admChips, admRows, admErro: s.admErro,
+      admAlertaQtd, admChips, admRows, admErro: s.admErro, admMsg: s.admMsg||"", fecharAdmMsg: ()=>this.setState({admMsg:""}),
       admVazio: admRows.length===0,
       admVazioTexto: s.adm.length ? "Nenhuma fatura neste filtro." : "Nenhuma conta administrativa lançada.",
       admAbertoValor: formatMoeda(admAberto), admPagoValor: formatMoeda(admPago), admTotalValor: formatMoeda(admAberto + admPago),
@@ -4883,15 +5842,17 @@ class Component extends DCLogic {
       cartaoResumo: cartBase.length ? cartConf + " de " + cartBase.length + " conferidos" : "Nenhum cartão nesta competência",
       cartaoPct: (cartBase.length ? Math.round(cartConf/cartBase.length*100) : 0) + "%",
       cartaoVazio: cartaoRows.length===0,
-      cartaoVazioTexto: cartBase.length ? "Nenhum cartão neste filtro." : "Nenhum cartão nesta competência. Cadastre abaixo.",
+      cartaoVazioTexto: cartBase.length ? "Nenhum cartão neste filtro." : "Nenhum cartão neste mês. Use \"Trazer cartões\" para repetir a lista do mês anterior, ou cadastre em Faturas › Cadastro.",
       cartaoTotalValor: formatMoeda(cartTotal), cartaoPendenteValor: formatMoeda(cartPend),
       diaOptions: Array.from({length:31}, (_,i)=>({value: String(i+1), label: String(i+1)})),
       ncNome: s.ncNome, onNcNome: (e)=>this.setState({ncNome: e.target.value}),
       ncDia: s.ncDia, onNcDia: (e)=>this.setState({ncDia: e.target.value}),
       ncValor: formatMoeda(s.ncValorRaw), onNcValor: (e)=>this.setState({ncValorRaw: parseMoedaInput(e.target.value)}),
       onAddCartao: ()=>this.addCartao(),
-      cartaoExportLabel: "Exportar " + compLabelISO(compShift(s.cartaoComp, -1)),
-      onExportCartoesAnterior: ()=>this.exportCartoesMesAnterior(),
+      cartaoExportLabel: "Trazer cartões de " + compLabelISO(compShift(s.cartaoComp, -1)),
+      fatSubTitulo: ({recebimentos:"Recebimentos", apuracao:"Apuração", cartoes:"Checklist de cartões", projecao:"Projeção de cartões", cadastros:"Cadastro"})[s.faturaSub] || "Lançamentos",
+      fatBadges: {lancamentos: fatPendentes || 0, recebimentos: Math.max(0, recRows.length - recOk), cartoes: (alertaVenc + alertaProx) || 0},
+      onExportCartoesAnterior: ()=>this.transferirCartoes(),
       faturaTipoOptions: fatTipoOptions,
       faturaCompOptions: fatComps.map(c=>({value:c, label:compLabelISO(c)})),
       faturaComp: s.faturaComp, onFaturaComp:(e)=>this.setState({faturaComp:e.target.value}),
@@ -4936,7 +5897,7 @@ class Component extends DCLogic {
       newDebtJuros: s.newDebtJuros, onNewDebtJuros:(e)=>this.setState({newDebtJuros:parseFloat(e.target.value)||0}),
       onAddDebt:()=>this.addDebt(),
       onLogout:()=>this.logout(),
-      openAdmin:()=>{ this.setState({adminOpen:true, adminMsg:""}); this.refreshAdminData(); },
+      openAdmin:()=>{ this.setState({adminOpen:true, adminMsg:"", adminOpsMsg:""}); this.refreshAdminData(); },
       closeAdmin:()=>this.setState({adminOpen:false}),
 
       isOperacao, isConsolidacao, isBalanco, showOperSelector, activeUnitName,
@@ -4950,7 +5911,7 @@ class Component extends DCLogic {
       balCapitalSocial, onCapitalChange:(e)=>this.updateCapital(s.opIndex,e.target.value),
       balLucrosAcumulados, balLucrosColor, balTotalPL, balTotalPassivoPL,
       opIndex: s.opIndex,
-      operationOptions: s.units.map((u,i)=>({value:i, label:u.name})),
+      operationOptions: s.units.map((u,i)=>({value:i, label:u.name, ativo:u.ativo!==false})).filter(o=>o.ativo || o.value===s.opIndex).map(o=>({value:o.value, label:o.ativo ? o.label : o.label + " (desativada)"})),
       onOpChange:(e)=>{this.flushCommits(); this.setState({opIndex:parseInt(e.target.value,10)});},
       month: s.month,
       monthOptions: MESES.map((m,i)=>({value:i, label:m})),
@@ -4962,9 +5923,14 @@ class Component extends DCLogic {
 
       kpis, resumoRows, categories, contentCols,
       opSummaryRows, detailCategories,
-      detailUnitHeaders: s.units.map(u=>({name:u.name, dot:u.cor})),
+      detailUnitHeaders: s.units.filter(u=>u.ativo!==false).map(u=>({name:u.name, dot:u.cor})),
 
       adminOpen: s.adminOpen,
+      adminOpsMsg: s.adminOpsMsg||"",
+      adminOps: s.units.map((u,i)=>{ const on = u.ativo!==false;
+        return {nome:u.name, cor:u.cor, opac: on ? 1 : .35, nomeCor: on ? "#111827" : "#98A2B3", status: on ? "Ativa" : "Desativada",
+          pillBg: on ? "#ECFDF3" : "#F2F4F7", pillFg: on ? "#027A48" : "#475467", btn: on ? "Desativar" : "Reativar", btnCor: on ? "#B42318" : "#1D4ED8",
+          onToggle:()=>this.opAtivar(i, !on)}; }),
       adminUsers: s.users.map(u=>{
         const pp = {...permsPadrao(u.role), ...(u.permissoes||{})};
         const selBase = {width:"100%",boxSizing:"border-box",padding:"5px 6px",borderRadius:"6px",fontSize:"12px",fontWeight:600,border:"1px solid #D8DFEE"};
@@ -4993,7 +5959,7 @@ class Component extends DCLogic {
       exportScopeIsLoja: s.exportScope==="loja",
       exportScopeIsConsolidado: s.exportScope==="consolidado",
       onExportLojaChange:(e)=>this.setState({exportLoja:e.target.value}),
-      exportLojaOptions: [{value:"todas",label:"Todas as lojas"}, ...s.units.map((u,i)=>({value:String(i),label:u.name}))],
+      exportLojaOptions: [{value:"todas",label:"Todas as lojas"}, ...s.units.map((u,i)=>({value:String(i),label:u.name, ativo:u.ativo!==false})).filter(o=>o.ativo).map(o=>({value:o.value,label:o.label}))],
     };
   }
 }
