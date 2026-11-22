@@ -117,26 +117,59 @@ async function pdfFaturamentoBruto(file){
     })));
   }
   if(!vendas.length) return null;
-  const por = new Map(); let markup = 0;
+  const r = resumoFatBrutoDre(vendas.map(v=>({forn:v[1], tarifa:v[7], du:v[10], com:v[11], over:v[13], markup:v[15]})));
+  return {nome:file.name, ...r, info:vendas.length+" vendas lidas"+(periodo?" · "+periodo:"")+" · "+r.info, periodo:periodoDe(periodo)};
+}
+// Relatório de faturamento (Faturamento Bruto, PDF ou planilha) → linhas do DRE. Regras:
+//   Faturamento = soma do Total Tarifa · Azul Viagens → Pacote Azul Viagens · Azul Linhas → Aéreo Azul Linhas ·
+//   demais fornecedores → Consolidação.
+//   Receita = DU/RAV + Comissão Agência, no grupo do fornecedor (Receita Venda de Pacote, Receita de Aéreo Azul Linhas,
+//   Receita de Consolidação). Mark-up de todas as vendas → Mark-up. Over Agência fica numa linha própria (Receita Outros).
+// As descrições não levam contagens, para a escolha de linha feita à mão valer nos meses seguintes.
+const FAT_GRUPOS = [
+  {id:"av", nome:"Azul Viagens", teste:n=>/^azul viagens/.test(n), fat:"fat_pacote", rec:"rec_pacote"},
+  {id:"al", nome:"Azul Linhas", teste:n=>/^azul linhas/.test(n), fat:"fat_aereo", rec:"rec_aereo"},
+  {id:"co", nome:"Consolidação (demais fornecedores)", teste:()=>true, fat:"fat_consolidadoras", rec:"rec_ancil"},
+];
+function resumoFatBrutoDre(vendas){
+  const r2 = x=>Math.round(x*100)/100, n0 = x=>Number(x)||0;
+  const g = FAT_GRUPOS.map(x=>({...x, tarifa:0, receita:0, du:0, com:0, n:0, forn:new Set()}));
+  let markup = 0, over = 0, nv = 0;
   vendas.forEach(v=>{
-    const f = v[1] || "(sem fornecedor)", g = por.get(f) || {fat:0, rec:0, n:0};
-    g.fat += v[12]; g.rec += v[10] + v[11] + v[13]; g.n++; por.set(f, g); markup += v[15];
+    const f = String(v.forn||"").trim(); if(!f || /^totai?s?\b/i.test(f)) return;
+    const gr = g.find(x=>x.teste(normTxt(f)));
+    gr.tarifa += n0(v.tarifa); gr.du += n0(v.du); gr.com += n0(v.com); gr.n++; gr.forn.add(f);
+    markup += n0(v.markup); over += n0(v.over); nv++;
   });
-  const linhaDe = f=>{ const n = normTxt(f);
-    if(/^azul viagens/.test(n)) return ["fat_pacote","rec_pacote"];
-    if(/^azul linhas/.test(n)) return ["fat_aereo","rec_aereo"];
-    if(FAT_BRUTO_CONSOLID.some(c=>n.startsWith(c))) return ["fat_consolidadoras","rec_ancil"];
-    return ["fat_outros","rec_outros"]; };
-  const linhas = [], sugestao = {}, r2 = x=>Math.round(x*100)/100;
-  Array.from(por.entries()).sort((a,b)=>b[1].fat-a[1].fat).forEach(([f,g])=>{
-    const [lf, lr] = linhaDe(f), q = " ("+g.n+(g.n>1?" vendas)":" venda)");
-    if(g.fat){ const d = "Faturamento · "+f+q; linhas.push([d, r2(g.fat)]); sugestao[normTxt(d)] = lf; }
-    if(g.rec){ const d = "Receita (DU/RAV + comissão + over) · "+f; linhas.push([d, r2(g.rec)]); sugestao[normTxt(d)] = lr; }
-  });
-  if(markup){ const d = "Mark-up · todas as vendas"; linhas.push([d, r2(markup)]); sugestao[normTxt(d)] = "rec_markup"; }
-  return {nome:file.name, cab:["Descrição","Valor"], linhas, sugestao, info:vendas.length+" vendas lidas"+(periodo?" · "+periodo:"")};
+  const linhas = [], sugestao = {}, add = (d, val, linha)=>{ if(!r2(val)) return; linhas.push([d, r2(val)]); sugestao[normTxt(d)] = linha; };
+  g.forEach(x=>add("Faturamento (Total Tarifa) · "+x.nome, x.tarifa, x.fat));
+  g.forEach(x=>add("Receita (DU/RAV + Comissão) · "+x.nome, x.du + x.com, x.rec));
+  add("Mark-up · todas as vendas", markup, "rec_markup");
+  add("Over Agência · todas as vendas", over, "rec_outros");
+  const det = g.filter(x=>x.n).map(x=>x.nome.split(" (")[0]+": "+x.n+(x.n>1?" vendas":" venda")).join(" · ");
+  const outros = [...g[2].forn].slice(0,6).join(", ") + (g[2].forn.size>6 ? "…" : "");
+  return {cab:["Descrição","Valor"], linhas, sugestao, colDesc:0, colValor:1, automatico:true, vendas:nv,
+    info: det + (g[2].n ? " (" + outros + ")" : "")};
+}
+// "Período : Lançamento 01/10/2026 a 31/10/2026" → {ini, fim} em ISO
+function periodoDe(txt){
+  const m = String(txt||"").match(/(\d{2})\/(\d{2})\/(\d{4})\s*(?:a|at[ée])\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+  return m ? {ini:m[3]+"-"+m[2]+"-"+m[1], fim:m[6]+"-"+m[5]+"-"+m[4]} : null;
+}
+// Planilha do mesmo relatório (exportada em Excel): reconhece pelas colunas.
+function planilhaFatBruto(p){
+  const n = p.cab.map(normTxt), col = (...ks)=>n.findIndex(h=>ks.some(k=>h===k || h.startsWith(k)));
+  const ix = {forn:col("nome fornec","fornecedor"), tarifa:col("total tarifa"), du:col("total du"), com:col("comissao agencia","comissao"),
+    over:col("over agencia","over"), markup:col("markup","mark up")};
+  if(ix.forn<0 || ix.tarifa<0 || ix.du<0 || ix.markup<0) return null;
+  const vendas = p.linhas.map(r=>({forn:r[ix.forn], tarifa:numBR(r[ix.tarifa]), du:numBR(r[ix.du]), com:ix.com<0?0:numBR(r[ix.com]), over:ix.over<0?0:numBR(r[ix.over]), markup:numBR(r[ix.markup])}))
+    .map(v=>({...v, tarifa:isFinite(v.tarifa)?v.tarifa:0, du:isFinite(v.du)?v.du:0, com:isFinite(v.com)?v.com:0, over:isFinite(v.over)?v.over:0, markup:isFinite(v.markup)?v.markup:0}));
+  const r = resumoFatBrutoDre(vendas); if(!r.vendas) return null;
+  const per = periodoDe(p.topo), fil = (String(p.topo||"").match(/Filtro\(s\)\s*:\s*\[?([^\]|]*)/i)||[])[1];
+  return {nome:p.nome, ...r, periodo:per, filtro:(fil||"").trim(),
+    info: r.vendas+" vendas lidas"+(per ? " · "+per.ini.split("-").reverse().join("/")+" a "+per.fim.split("-").reverse().join("/") : "")+(fil ? " · "+fil.trim() : "")+" · "+r.info};
 }
 function lerRelatorioDre(file){
-  if(!/\.pdf$/i.test(file.name)) return lerPlanilha(file);
+  if(!/\.pdf$/i.test(file.name)) return lerPlanilha(file).then(p=>planilhaFatBruto(p) || p);
   return pdfFaturamentoBruto(file).catch(()=>null).then(r=>r || lerPlanilha(file));
 }

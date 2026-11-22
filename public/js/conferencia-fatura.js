@@ -291,7 +291,7 @@ function lerPlanilha(file){
         const cab = Array.from({length:largura}, (_,i)=>String((aoa[h]||[])[i]==null?"":(aoa[h]||[])[i]).trim() || ("Coluna "+(i+1)));
         const linhas = aoa.slice(h+1).filter(row=>row.some(c=>String(c).trim()!==""));
         if(!linhas.length){ falha(new Error("A planilha não tem linhas de dados.")); return; }
-        ok({nome:file.name, cab, linhas});
+        ok({nome:file.name, cab, linhas, topo: aoa.slice(0, h).map(r=>r.filter(c=>String(c).trim()!=="").join(" ")).filter(Boolean).join(" | ")});
       }catch(e){ falha(new Error("Arquivo não reconhecido. Use .xlsx, .xls ou .csv.")); }
     };
     r.readAsArrayBuffer(file);
