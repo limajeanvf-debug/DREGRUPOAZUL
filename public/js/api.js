@@ -1,6 +1,9 @@
 // Comunicação com o backend.
 // Carregado como script comum antes do componente (ver <head> do Sistema Grupo Azul.dc.html).
-const API_BASE_URL = "https://dregrupoazul.onrender.com"; // schema aplicado
+// Pré-visualização (janela do Claude, onde o servidor não responde): liga só quando alguém clica em
+// "Abrir pré-visualização" na tela de login e vale até fechar a aba. Sem ela, tudo fala com o servidor.
+const MODO_PREVIA = (()=>{ try{ return sessionStorage.getItem("grupoAzul_previa")==="1"; }catch(e){ return false; } })();
+const API_BASE_URL = MODO_PREVIA ? "" : "https://dregrupoazul.onrender.com"; // schema aplicado
 async function apiFetch(path, opts){
   const token = localStorage.getItem(LS_TOKEN);
   const headers = {"Content-Type":"application/json", ...((opts&&opts.headers)||{})};

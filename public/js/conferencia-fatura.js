@@ -4,7 +4,7 @@ const CONF_TIPOS = [
   {id:"azul_linhas", label:"Faturas Azul Linhas", pronto:true, desc:"Envie a fatura da Azul Linhas Aéreas (arquivo 1, PDF ou planilha) e o relatório de vendas do sistema (arquivo 2). Cada bilhete da fatura é ligado à venda pelo localizador (RLOC) e recebe o número da venda e a filial. Quando a venda não é encontrada, os campos ficam em branco. Digite a NC e exporte para o Excel."},
   {id:"azul_viagens", label:"Faturas Azul Viagens", pronto:true, desc:"Envie a fatura RAV da Azul Viagens (arquivo 1, PDF ou planilha) e o relatório de vendas do sistema (arquivo 2). Cada booking da fatura é ligado à venda pelo localizador e recebe o número da venda e a filial. Quando a venda não é encontrada, os campos ficam em branco. Digite a NC e exporte para o Excel."},
   {id:"skyteam", label:"Faturas Skyteam", pronto:false},
-  {id:"salinas", label:"Faturas Salinas", pronto:true, desc:"Envie a fatura da Salinas Tour (arquivo 1, PDF ou planilha) e o relatório de vendas do sistema (arquivo 2). Cada item da fatura é ligado à venda pelo localizador (ou pelo bilhete, se for a coluna com valores em comum) e recebe o número da venda e a filial. Quando a venda não é encontrada, os campos ficam em branco. Digite a NC e exporte para o Excel."},
+  {id:"salinas", label:"Faturas Salinas", pronto:true, desc:"Envie a fatura da Salinas Tour (arquivo 1, PDF ou planilha; lê o layout antigo e o novo, com bilhetes agrupados por Cia) e o relatório de vendas do sistema (arquivo 2). Cada item da fatura é ligado à venda pelo localizador (ou pelo bilhete, se for a coluna com valores em comum) e recebe o número da venda e a filial. Quando a venda não é encontrada, os campos ficam em branco. Digite a NC e exporte para o Excel."},
   {id:"flytour", label:"Faturas Flytour", pronto:false},
   {id:"cartao", label:"Faturas Cartão de Crédito", pronto:true, desc:"Envie as faturas do cartão (PDF; pode ser mais de uma, com ou sem senha. Layouts prontos: C6, Nubank, Itaú, Bradesco, Sicoob, Digio, PicPay, Mercado Pago, Riachuelo/Midway e Brasilcard) e o relatório \"Conferência\" do sistema de vendas (arquivo 2). A fatura é lida na íntegra: compras de viagem, outras compras, juros, multas, IOF, tarifas e pagamentos, com um resumo por cartão para comparar os encargos. As compras de viagem são ligadas à venda pelo localizador (RLOC) e recebem o número da venda e a filial; quando a venda não é encontrada, os campos ficam em branco. Digite a NC de cada fatura e exporte para o Excel."},
 ];
@@ -127,6 +127,33 @@ function pdfFaturaSkyteam(L){
   });
   return {cab, linhas};
 }
+// Fatura da Salinas Tour, layout novo (Benner/Stimulsoft, "BILHETES" por Cia): cada bilhete ocupa 3 linhas —
+// rota + nº do bilhete; passageiro + emissão + 13 valores; data do voo + localizador (às vezes com sufixo "-1").
+function pdfFaturaSalinas2(L){
+  const txt = L.map(t=>t.map(i=>i.s).join(" ")).join("\n");
+  const mF = txt.match(/N[º°o]\s*Fatura:?\s*(\d+)/i), fatura = mF ? mF[1] : "";
+  const cab = ["Cia","Tipo","Passageiro","Rota","Emissão","Data do voo","Bilhete","Localizador","Localizador na fatura",
+    "Tarifa","Taxa","RAV repassado","Comissão","Incentivo","Desconto","Fee","TxAdmCrt","TxDU","Líquido","Tarifa cartão","Taxa cartão","TxDU cartão","Nº fatura"];
+  const DATA = /^\d{2}\/\d{2}\/\d{4}$/;
+  const linhas = []; let cia = "", tipo = "";
+  L.forEach((t, k)=>{
+    const linha = t.map(i=>i.s).join(" ");
+    const mc = linha.match(/^Cia\s*:\s*(.+?)\s*Tipo\s*:\s*(\S+)/i);
+    if(mc){ cia = mc[1].replace(/\s+/g,""); tipo = mc[2]; return; }
+    const kd = t.findIndex(i=>DATA.test(i.s));
+    if(kd<1) return;
+    const nums = t.slice(kd+1).map(i=>pdfNum(i.s));
+    if(nums.length<13 || nums.some(n=>n===null)) return;
+    const pag = t[0].p;
+    const acima = L[k-1] && L[k-1][0].p===pag ? L[k-1] : [], abaixo = L[k+1] && L[k+1][0].p===pag ? L[k+1] : [];
+    const tkt = acima.find(i=>/^\d{10,13}$/.test(i.s)), rota = acima.find(i=>/^[A-Z]{3}(\/[A-Z]{3})+$/.test(i.s));
+    const voo = abaixo.find(i=>DATA.test(i.s)), loc = abaixo.find(i=>/^[A-Z0-9]{5,8}(-\d+)?$/.test(i.s) && !DATA.test(i.s));
+    const locFat = loc ? loc.s : "";
+    linhas.push([cia, tipo, t.slice(0,kd).map(i=>i.s).join(" "), rota ? rota.s : "", t[kd].s, voo ? voo.s : "", tkt ? tkt.s : "",
+      locFat.replace(/-\d+$/,""), locFat, ...nums.slice(0,13), fatura]);
+  });
+  return {cab, linhas};
+}
 // Fatura da Salinas Tour: cada item tem uma linha de valores e um bloco abaixo com Loc, Pax, Fornecedor e Produto.
 function pdfFaturaSalinas(L){
   const txt = L.map(t=>t.map(i=>i.s).join(" ")).join("\n");
@@ -224,7 +251,8 @@ async function lerPdf(file){
   catch(e){ throw new Error("Não foi possível abrir o PDF. Verifique a conexão com a internet e tente de novo."); }
   if(!L.length) throw new Error("Este PDF não tem texto (parece escaneado). Use a versão em Excel/CSV ou um PDF gerado pelo sistema.");
   const txt = L.map(t=>t.map(i=>i.s).join(" ")).join("\n");
-  const r = (/SALINAS TOUR/i.test(txt) && /\bSeq\b/.test(txt)) ? pdfFaturaSalinas(L)
+  const r = (/SALINAS TOUR/i.test(txt) && /TKT\/Loc/i.test(txt)) ? pdfFaturaSalinas2(L)
+    : (/SALINAS TOUR/i.test(txt) && /\bSeq\b/.test(txt)) ? pdfFaturaSalinas(L)
     : (/Bilhete - Passageiro/.test(txt) && /SKYPLUS|SkyTeam/i.test(txt)) ? pdfFaturaSkyteam(L)
     : (/Booking/.test(txt) && /\bRAV\b/.test(txt)) ? pdfFaturaAzulViagens(L)
     : (/Factura N|Fatura N/i.test(txt) && /RLOC/.test(txt)) ? pdfFaturaAzul(L)

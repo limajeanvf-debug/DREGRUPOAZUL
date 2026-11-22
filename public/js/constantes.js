@@ -1,5 +1,8 @@
 // Constantes do sistema: meses, lojas, categorias do DRE, chaves de armazenamento local e perfis de permissão.
 // Carregado como script comum antes do componente (ver <head> do Sistema Grupo Azul.dc.html).
+// Versão do sistema, mostrada no menu lateral e na tela de login. Atualize a cada deploy:
+// 1º número = mudança grande, 2º = tela ou recurso novo, 3º = correção. A data é a do deploy (aaaa-mm-dd).
+const VERSAO_SISTEMA = "1.1.0", VERSAO_DATA = "2026-11-22";
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const YEARS = [2025,2026,2027];
 const UNIT_DEFS = [
@@ -94,6 +97,31 @@ const DETAIL_ROWS = [
 {id:"prl_joao",label:"João Almeida",cat:"pro_labore"},
 {id:"prl_carlos",label:"Carlos Henrique",cat:"pro_labore"},
 ];
+// Ocupação reduzida por operação: só estas linhas aparecem na tela e nas listas de escolha.
+// Uma linha fora da lista ainda aparece no mês em que tiver valor lançado, para nenhum valor antigo sumir do DRE.
+const OCUPACAO_LINHAS_LOJA = ["ocu_aluguel","ocu_cond","ocu_manut","ocu_telefone","ocu_seguro","ocu_internet","ocu_outras"];
+const OCUPACAO_RESTRITA = {
+  "Loja Azul Viagens Shopping Recife": OCUPACAO_LINHAS_LOJA,
+  "Loja Arranjos Express Shopping Recife": OCUPACAO_LINHAS_LOJA,
+};
+function linhaDaOperacao(d, unit){
+  if(d.tipo && d.tipo!==unit.tipo) return false;
+  const r = OCUPACAO_RESTRITA[unit.name];
+  return !(r && d.cat==="ocupacao" && !r.includes(d.id));
+}
+// Contas Administrativas → linha do DRE, pelo tipo da conta. Sem correspondência (ou linha fora da
+// operação): "Outras Despesas de Ocupação".
+const ADM_TIPO_DRE = [[/aluguel/,"ocu_aluguel"],[/condom/,"ocu_cond"],[/energia|\bluz\b/,"ocu_energia"],[/agua/,"ocu_agua"],
+  [/internet/,"ocu_internet"],[/telefon|celular/,"ocu_telefone"],[/seguro/,"ocu_seguro"],[/manuten|limpeza/,"ocu_manut"],
+  [/iptu/,"ocu_iptu"],[/fundo de prop|propaganda/,"ocu_fundo"],[/ar condic/,"ocu_ar"],[/taxa de adm/,"ocu_taxa"],[/contab|contador/,"out_contador"]];
+function admLinhaDre(tipo, unit){
+  const t = String(tipo||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  const m = ADM_TIPO_DRE.find(([rx])=>rx.test(t));
+  let id = m ? m[1] : "ocu_outras";
+  const d = DETAIL_ROWS.find(x=>x.id===id);
+  if(!d || (unit && !linhaDaOperacao(d, unit))) id = "ocu_outras";
+  return id;
+}
 const SUMMARY_ROWS = [
 {key:"faturamento",label:"Faturamento",kind:"plain"},
 {key:"receitaBruta",label:"Receita bruta",kind:"plain"},
@@ -115,6 +143,8 @@ const LS_USERS = "dreAzul_users_v1", LS_SESSION = "dreAzul_session_v1", LS_DATA 
 const LS_FATURAS = "dreAzul_faturas_v1";
 const LS_CARTOES = "dreAzul_cartoes_v1", LS_RESP = "dreAzul_responsaveis_v1";
 const LS_ADM = "dreAzul_faturas_adm_v1";
+const LS_CPROJ = "grupoAzul_cartao_projecao_v1";
+const LS_OPS_INATIVAS = "grupoAzul_operacoes_inativas_v1";
 const ABAS_PERM = [{id:"operacao",label:"Por operação"},{id:"consolidacao",label:"Consolidação"},{id:"balanco",label:"Balanço"},{id:"passivo",label:"Passivo"},{id:"faturas",label:"Faturas"},{id:"contasadm",label:"Contas Administrativas"},{id:"importacao",label:"Importar relatórios"},{id:"conferencia",label:"Conferência de fatura"},{id:"fatdiario",label:"Faturamento diário"}];
 const MODS_PERM = [{id:"comercial",label:"Comercial"},{id:"helpdesk",label:"Help desk"}];
 const PERM_PADRAO_MOD = {helpdesk:"ver", rh:"nenhum", comercial:"nenhum"};

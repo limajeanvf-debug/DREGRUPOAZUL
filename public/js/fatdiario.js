@@ -2,9 +2,9 @@
 const LS_FD = "grupoAzul_fatdiario_v1";
 const FD_EMPRESAS = [
   {id:"azul", label:"Azul Viagens", temDU:true, setores:["AZUL VIAGENS - RECIFE","AZUL VIAGENS - ONLINE","AZUL VIAGENS- PATTEO"],
-    dica:"Importe a planilha de faturamento (aba PLANILHA GERAL). O sistema soma Total tarifa (Total produtos) e Liq. Agência (DU) por setor e dia."},
-  {id:"sonho", label:"Sonho Azul", temDU:true, setores:["The Blue- Prime e Grupos","The Blue- Corporativo Brasil Eduardo","The Blue- Corporativo (Carlos Maris)","The Blue- Corporativo","Parceiros Partner"],
-    dica:"Importe a planilha de faturamento (aba PLANILHA GERAL). O sistema soma Total tarifa (Total produtos) e Liq. Agência (DU) por setor e dia."},
+    dica:"Importe a planilha de faturamento (aba PLANILHA GERAL) ou o PDF do relatório Faturamento Líquido do sistema de vendas (um por setor ou geral). O sistema soma Total tarifa (Total produtos) e Liq. Agência (DU) por setor e dia."},
+  {id:"sonho", label:"Sonho Azul", temDU:true, setores:["The Blue- Prime e Grupos","The Blue- Corporativo Brasil Eduardo","Diretoria"], excluir:["DIGISAC"],
+    dica:"Importe o PDF do relatório Faturamento Líquido do sistema de vendas ou a planilha (aba PLANILHA GERAL). No PDF, o promotor DIRETORIA vai para Diretoria, EDUARDO para The Blue- Corporativo Brasil Eduardo e os demais para The Blue- Prime e Grupos. Digisac não entra no relatório."},
   {id:"arranjos", label:"Arranjos Express", temDU:false, royalties:0.06, marketing:0.02, setores:["RECIFE","CONSELHEIRO"], excluir:["17 DE AGOSTO"],
     dica:"Importe a planilha mensal das lojas (colunas LOJA · FATURAMENTO R$) ou digite o faturamento de cada dia direto na tabela. Royalties 6% e marketing 2% sobre o projetado."},
 ];
@@ -25,6 +25,8 @@ function fdData(v){
   if(m){ const y = m[3].length===2 ? "20"+m[3] : m[3]; return y+"-"+p2(m[2])+"-"+p2(m[1]); }
   const iso = String(v||"").match(/^(\d{4})-(\d{2})-(\d{2})/); return iso ? iso[0] : null;
 }
+// Setores que não entram no relatório da empresa (ex.: DIGISAC na Sonho Azul), sem diferenciar maiúsculas.
+function fdExcluido(emp, nome){ const n = String(nome||"").trim().toUpperCase(); return (emp.excluir||[]).some(x=>x.toUpperCase()===n); }
 function fdLoja(nome){
   let n = String(nome||"").toUpperCase().replace(/\s+/g," ").trim().replace(/^LOJA\s+/,"").replace(/^TOTAL\s+/,"");
   n = n.replace(/DEAGOSTO/,"DE AGOSTO");
@@ -47,7 +49,7 @@ function fdLerWorkbook(wb, emp){
       const cab = rows[hi].map(fdNorm), col = (...ks)=>cab.findIndex(c=>ks.some(k=>c===k||c.startsWith(k)));
       const cS = col("setor"), cD = col("data venda"), cT = col("total tarifa"), cL = col("liq agencia","liquido agencia");
       if(cD<0 || cT<0) continue;
-      rows.slice(hi+1).forEach(r=>{ const setor = String(r[cS]||"").trim(), dia = fdData(r[cD]); if(!setor || !dia) return;
+      rows.slice(hi+1).forEach(r=>{ const setor = String(r[cS]||"").trim(), dia = fdData(r[cD]); if(!setor || !dia || fdExcluido(emp, setor)) return;
         addSetor(setor); fdSomar(porComp, "", dia, setor, fdNum(r[cT]), cL>=0 ? fdNum(r[cL]) : 0); });
       if(setores.length) break;
     }
@@ -72,7 +74,41 @@ function fdLerWorkbook(wb, emp){
   }
   return {porComp, setores};
 }
+// PDF "Relatório Faturamento Líquido" do sistema de vendas: o setor de cada venda vem da filial (e do promotor ONLINE).
+// Total produtos = Total Tarifa · DU = Liq. Agência. Volta {porComp, setores, periodo, parcial:true}: na importação,
+// só os setores presentes no arquivo são substituídos dentro do período do relatório; os outros setores ficam como estão.
+const FD_FILIAL_SETOR = {azul: {"1":"AZUL VIAGENS - RECIFE", "2":"AZUL VIAGENS- PATTEO", "3":"AZUL VIAGENS - ONLINE"}};
+// Sonho Azul: o setor vem do promotor (o relatório é todo da filial 3). Quem não está na lista vai para "padrao".
+const FD_PROMOTOR_SETOR = {sonho: {promotores: {"DIRETORIA":"Diretoria", "EDUARDO":"The Blue- Corporativo Brasil Eduardo"}, padrao:"The Blue- Prime e Grupos"}};
+function fdSetorDaVenda(emp, fil, prom){
+  const pm = FD_PROMOTOR_SETOR[emp.id];
+  if(pm){ const k = Object.keys(pm.promotores).find(n=>prom===n || prom.startsWith(n+" ")); return k ? pm.promotores[k] : pm.padrao; }
+  const mapa = FD_FILIAL_SETOR[emp.id];
+  return prom==="ONLINE" ? mapa["3"] : (mapa[fil] || ("FILIAL " + (fil || "?")));
+}
+function fdDeFatLiquido(r, emp){
+  if(!FD_FILIAL_SETOR[emp.id] && !FD_PROMOTOR_SETOR[emp.id]) throw new Error("O PDF do Faturamento Líquido ainda não está configurado para " + emp.label + ". Use a planilha.");
+  const porComp = {}, setores = [];
+  r.linhas.forEach(l=>{
+    const dia = fdData(l[0]); if(!dia) return;
+    const fil = String(l[19]||"").trim(), prom = String(l[7]||"").trim().toUpperCase();
+    const setor = fdSetorDaVenda(emp, fil, prom);
+    if(fdExcluido(emp, setor) || fdExcluido(emp, prom)) return;
+    if(!setores.includes(setor)) setores.push(setor);
+    fdSomar(porComp, "", dia, setor, fdNum(l[8]), fdNum(l[16]));
+  });
+  if(!setores.length) throw new Error("O relatório não tem vendas.");
+  const pos = n=>{ const i = emp.setores.indexOf(n); return i<0 ? 99 : i; }; setores.sort((a,b)=>pos(a)-pos(b));
+  return {porComp, setores, periodo: r.periodo || null, filtro: r.filtro || "", parcial: true, vendas: r.linhas.length};
+}
 function fdLerArquivo(file, emp){
+  if(/\.pdf$/i.test(file.name)){
+    if(typeof pdfFaturamentoLiquido!=="function") return Promise.reject(new Error("Leitor de PDF não carregado."));
+    return pdfFaturamentoLiquido(file).then(r=>{
+      if(!r) throw new Error("Este PDF não é o relatório Faturamento Líquido do sistema de vendas.");
+      return fdDeFatLiquido(r, emp);
+    });
+  }
   return file.arrayBuffer().then(buf=>{
     const wb = XLSX.read(buf, {type:"array", cellDates:true});
     const r = fdLerWorkbook(wb, emp);
@@ -111,12 +147,14 @@ function fdDesenharImagem(m){
     linhas.push({dia:String(i).padStart(2,"0")+"/"+String(mo).padStart(2,"0"), wd:new Date(y, mo-1, i).getDay(), vals:vals.concat([c])});
   }
   const fator = m.apur ? m.nd/m.apur : 0, totC = tot[tot.length-1];
-  const rod = [["Total", x=>[num(x.t), num(x.du), pct(x.du,x.t)], false], ["Projeção do mês", x=>[num(x.t*fator), num(x.du*fator), pct(x.du,x.t)], true]];
-  if(!emp.temDU){ rod.push(["Royalties ("+(emp.royalties*100)+"%)", x=>[num(x.t*fator*emp.royalties)], false]); rod.push(["Marketing ("+(emp.marketing*100)+"%)", x=>[num(x.t*fator*emp.marketing)], false]); }
+  // Total e Projeção em faixas de destaque (escura e azul, letra maior); royalties/marketing discretos.
+  const rod = [["Total", x=>[num(x.t), num(x.du), pct(x.du,x.t)], "total"], ["Projeção", x=>[num(x.t*fator), num(x.du*fator), pct(x.du,x.t)], "proj"]];
+  if(!emp.temDU){ rod.push(["Royalties ("+(emp.royalties*100)+"%)", x=>[num(x.t*fator*emp.royalties)], ""]); rod.push(["Marketing ("+(emp.marketing*100)+"%)", x=>[num(x.t*fator*emp.marketing)], ""]); }
+  const altRod = r=>r[2] ? 36 : FH;
   const kpis = emp.temDU ? [["Total produtos", moeda(totC.t)], ["DU", moeda(totC.du)], ["Rentabilidade", pct(totC.du, totC.t)], ["Projeção do mês", moeda(totC.t*fator)]]
     : [["Faturamento", moeda(totC.t)], ["Projeção do mês", moeda(totC.t*fator)], ["Royalties ("+(emp.royalties*100)+"%)", moeda(totC.t*fator*emp.royalties)], ["Marketing ("+(emp.marketing*100)+"%)", moeda(totC.t*fator*emp.marketing)]];
   const HH = 74, KH = 70, G1 = 30, G2 = 24, RH = 24, FH = 28;
-  const TH = G1+G2+linhas.length*RH+rod.length*FH;
+  const TH = G1+G2+linhas.length*RH+rod.reduce((a,r)=>a+(r[2] ? 36 : FH),0);
   const H = HH + 16 + KH + 16 + TH + 38;
   const esc = 2, cv = document.createElement("canvas"); cv.width = W*esc; cv.height = H*esc;
   const g = cv.getContext("2d"); g.scale(esc, esc);
@@ -144,17 +182,21 @@ function fdDesenharImagem(m){
   g.fillStyle = "#E3E8F3"; g.fillRect(x0, yy+G1+G2-1, tW, 1);
   let ry = yy + G1 + G2;
   linhas.forEach(l=>{ const fds = l.wd===0 || l.wd===6;
-    if(fds){ g.fillStyle = "#F5F8FD"; g.fillRect(x0, ry, diaW + (grupos.length-1)*gW, RH); }
     txt(l.dia, x0+12, ry+RH/2, "#334155", F(700,11.5)); txt(FD_SEMANA[l.wd], x0+54, ry+RH/2, fds ? "#B42318" : "#94A3B8", F(600,10));
     l.vals.forEach((x,gi)=>{ const gx = x0 + diaW + gi*gW, peso = gi===grupos.length-1 ? 700 : 500;
       const cel = emp.temDU ? [num(x.t), num(x.du), pct(x.du, x.t)] : [num(x.t)]; let sx = gx;
       cel.forEach((v,ci)=>{ txt(v, sx+sub[ci][1]-10, ry+RH/2, v==="–" ? "#CBD5E1" : ci===2 ? "#64748B" : "#111827", F(peso,11.5), "right"); sx += sub[ci][1]; }); });
     g.fillStyle = "#F0F2F7"; g.fillRect(x0, ry+RH-1, tW, 1); ry += RH; });
-  rod.forEach(r=>{ g.fillStyle = r[2] ? "#E4ECFF" : "#F8FAFC"; g.fillRect(x0, ry, tW, FH); g.fillStyle = "#E3E8F3"; g.fillRect(x0, ry, tW, 1);
-    const cor = r[2] ? "#1D4ED8" : "#111827"; txt(r[0], x0+12, ry+FH/2, cor, F(800,11.5), "left", diaW-16);
-    tot.forEach((x,gi)=>{ let sx = x0 + diaW + gi*gW; r[1](x).slice(0, sub.length).forEach((v,ci)=>{ txt(v, sx+sub[ci][1]-10, ry+FH/2, cor, F(800,11.5), "right"); sx += sub[ci][1]; }); });
-    ry += FH; });
-  grupos.forEach((n,gi)=>{ const gx = x0 + diaW + gi*gW, cons = gi===grupos.length-1; g.fillStyle = cons ? "#A5B8F5" : "#D8DFEE"; g.fillRect(gx, yy, cons?2:1, TH); });
+  const rodY = ry;
+  rod.forEach(r=>{ const h = altRod(r), forte = !!r[2];
+    g.fillStyle = r[2]==="total" ? "#111827" : r[2]==="proj" ? "#1D4ED8" : "#F8FAFC"; g.fillRect(x0, ry, tW, h);
+    if(!forte){ g.fillStyle = "#E3E8F3"; g.fillRect(x0, ry, tW, 1); }
+    const cor = forte ? "#FFFFFF" : "#111827", fonte = F(800, forte ? 13.5 : 11.5);
+    txt(r[0], x0+12, ry+h/2, cor, fonte, "left", diaW-16);
+    tot.forEach((x,gi)=>{ let sx = x0 + diaW + gi*gW; r[1](x).slice(0, sub.length).forEach((v,ci)=>{ txt(v, sx+sub[ci][1]-10, ry+h/2, cor, fonte, "right"); sx += sub[ci][1]; }); });
+    ry += h; });
+  grupos.forEach((n,gi)=>{ const gx = x0 + diaW + gi*gW, cons = gi===grupos.length-1; g.fillStyle = cons ? "#A5B8F5" : "#D8DFEE"; g.fillRect(gx, yy, cons?2:1, rodY-yy);
+    g.fillStyle = "rgba(255,255,255,.22)"; g.fillRect(gx, rodY, 1, ry-rodY); });
   g.strokeStyle = "#D8DFEE"; g.lineWidth = 1; g.strokeRect(x0+.5, yy+.5, tW-1, TH-1);
   txt("Grupo Azul · Sistema integrado", P, H-18, "#94A3B8", F(600,10.5));
   return {canvas:cv, ultimo};

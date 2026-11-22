@@ -144,7 +144,9 @@ function parseNubank(pages) {
   const rows = []; let section = 'cur';
   for (const p of pages) {
     for (const line of toLines(p.items)) {
-      if (/Pagamentos e Financiamentos/i.test(line)) { section = 'skip'; continue; }
+      // "Pagamentos e Financiamentos" também entra: pagamentos (negativos), saldo restante e financiamentos (ex.: iFood
+      // parcelado pelo NuPay), senão a fatura anterior + lançamentos não fecha com o total.
+      if (/Pagamentos e Financiamentos/i.test(line)) { section = 'cur'; continue; }
       if (/^TRANSA[ÇC][ÕO]ES/i.test(line)) { section = 'cur'; continue; }
       if (section !== 'cur') continue;
       const m = line.match(NU);
@@ -170,8 +172,16 @@ function parseItau(pages) {
         if (/Lançamentos:\s*(compras e saques|produtos e serviços)/i.test(line)) { section = 'cur'; continue; }
         if (/Compras parceladas/i.test(line) && /pr[oó]ximas faturas/i.test(line)) { section = 'fut'; continue; }
         if (/^Pagamentos efetuados/i.test(line)) { section = 'pay'; continue; }
-        if (/Limites de crédito|Encargos cobrados|Total para próximas faturas|^Próxima fatura|^continua/i.test(line)) { section = 'other'; continue; }
-        if (section !== 'cur') continue;
+        if (/Encargos cobrados/i.test(line)) { section = 'enc'; continue; }
+        if (/Limites de crédito|Total para próximas faturas|^Próxima fatura|^continua|Novo teto de juros/i.test(line)) { section = 'other'; continue; }
+        // Encargos do quadro "Encargos cobrados nesta fatura" (juros do rotativo, mora, multa, IOF de financiamento):
+        // não têm data; entram com valor para a leitura fechar e para comparar juros entre os cartões.
+        if (section === 'enc') {
+          const e = line.match(/^(Juros do rotativo|Juros de mora|Multa por atraso|IOF de financiamento)\b.*?(\d{1,3}(?:\.\d{3})*,\d{2})$/i);
+          if (e && brNum(e[2]) > 0) rows.push({ data: '', desc: e[1], parcela: null, valor: brNum(e[2]) });
+          continue;
+        }
+        if (section !== 'cur' && section !== 'pay') continue;
         let m; RX.lastIndex = 0;
         while ((m = RX.exec(line))) {
           rows.push({ data: m[1], desc: m[2].trim(), parcela: m[3] ? m[3].replace(/^0/, '').replace('/0', '/') : null, valor: brNum(m[4]) });
@@ -575,18 +585,111 @@ function categorizar(r) {
   if (/multa/i.test(d)) return 'multa';
   if (/juros|encargo|rotativo|refinanciamento|mora\b/i.test(d)) return 'juros';
   if (r.status !== 'ign') return 'viagem';
-  if (/parcelamento de fatura|fatura parcelada/i.test(d)) return 'parcfat';
+  if (/parcelamento de fatura|fatura parcelada|financiam\w*\s+fat/i.test(d)) return 'parcfat';
   if (/anuidade|tarifa|seguro|prote[cç][aã]o|\bSMS\b|\bUCC\b|avalia[cç][aã]o emerg|ressarcimento de (despesa|cobran)/i.test(d)) return 'tarifa';
   return 'outras';
 }
+const TOTAIS_EXTRA = {
+  'Nubank': { total: /fatura de \S+,? no valor de\s*R\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/i },
+  'Itaú':   { total: /Total desta fatura\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/i, anterior: /Total da fatura anterior\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/i }
+};
 function totaisDoPdf(pages, banco) {
-  const L = LAYOUTS[banco] || {};
+  const L = LAYOUTS[banco] || TOTAIS_EXTRA[banco] || {};
   const t = pages.map(p => p.items.map(i => i.str).join(' ')).join(' ').replace(/\s+/g, ' ');
   const V = '(-?\\d{1,3}(?:\\.\\d{3})*,\\d{2})';
   const tot = L.total || new RegExp('(?:Total a pagar|Total da (?:sua )?fatura|Valor da fatura)\\s*:?\\s*(?:R\\$\\s*)?' + V, 'i');
   const ant = L.anterior === null ? null : (L.anterior || new RegExp('(?:Saldo anterior|Fatura anterior|Saldo da fatura anterior)\\s*:?\\s*(?:R\\$\\s*)?' + V, 'i'));
   const mt = t.match(tot), ma = ant ? t.match(ant) : null;
   return { totalPdf: mt ? brNum(mt[1]) : null, anteriorPdf: ma ? brNum(ma[1]) : null };
+}
+/* ===== Projeção de parcelas futuras (só compras da agência) =====
+   Cada fatura importada guarda as compras parceladas que ainda têm parcelas a vencer. A projeção usa só a fatura mais
+   recente de cada cartão: ela já lista todas as parcelas em andamento, então nada é contado duas vezes.
+   Compra da agência = categoria "Compra de viagem" (localizador ou fornecedor de viagem) ou marcada como Agência.
+   A marcação vale pelo estabelecimento (chaveEstab) e é reaproveitada nas próximas faturas. */
+const MES_N = { JAN: 1, FEV: 2, MAR: 3, ABR: 4, MAI: 5, JUN: 6, JUL: 7, AGO: 8, SET: 9, OUT: 10, NOV: 11, DEZ: 12 };
+const p2 = n => String(n).padStart(2, '0');
+/** Vencimento (aaaa-mm-dd), final do cartão e primeiro nome do titular (só quando não há final), lidos do PDF. */
+function metaFatura(pages, banco, hoje) {
+  hoje = hoje || new Date();
+  const t = pages.slice(0, 4).map(p => p.items.map(i => i.str).join(' ')).join(' ').replace(/\s+/g, ' ');
+  let venc = null, m;
+  if ((m = t.match(/(?:Vencimento|Vence em|Data de vencimento)\s*:?\s*(\d{2})\/(\d{2})\/(\d{4})/i))) venc = m[3] + '-' + m[2] + '-' + m[1];
+  else if ((m = t.match(new RegExp('vencimento\\s*:?\\s*(\\d{1,2})\\s+(?:de\\s+)?(' + MESES + ')[a-zç]*\\.?\\s+(?:de\\s+)?(\\d{4})', 'i'))))
+    venc = m[3] + '-' + p2(MES_N[m[2].toUpperCase()]) + '-' + p2(m[1]);
+  else if ((m = t.match(new RegExp('vencimento\\s*:?\\s*(\\d{1,2})\\s+(?:de\\s+)?(' + MESES + ')', 'i')))) {
+    // Sem ano (ex.: "Vencimento: 25 SET"): o ano mais próximo de hoje.
+    const mes = MES_N[m[2].toUpperCase()], hm = hoje.getMonth() + 1; let y = hoje.getFullYear();
+    if (mes - hm > 6) y--; else if (hm - mes > 6) y++;
+    venc = y + '-' + p2(mes) + '-' + p2(m[1]);
+  }
+  let final = null, titular = null;
+  if ((m = t.match(/final\s+(\d{4})\b/i)) || (m = t.match(/(?:[X*]{4}[.\s]?)+\]?\s*(\d{4})\b/))) final = m[1];
+  if (!final && (m = t.match(/Ol[áa],?\s+([A-ZÀ-Ý][A-Za-zÀ-ÿ]+)/))) titular = m[1].charAt(0) + m[1].slice(1).toLowerCase();
+  const apelido = banco + (final ? ' final ' + final : titular ? ' ' + titular : '');
+  return { vencimento: venc, final, titular, apelido };
+}
+/** Chave do estabelecimento: duas primeiras palavras sem números (tira parcela, localizador e códigos). */
+function chaveEstab(desc) {
+  const u = String(desc || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
+    .replace(/\s*-?\s*PARCELA\s+\d+\s*(?:\/|DE)\s*\d+.*$/, '').replace(/\b\d{1,2}\/\d{1,2}\b/g, ' ');
+  const ws = u.split(/[^A-Z0-9]+/).filter(w => w.length >= 2 && !/\d/.test(w));
+  return ws.slice(0, 2).join(' ') || u.replace(/[^A-Z0-9]+/g, ' ').trim().slice(0, 24) || '?';
+}
+const CAT_FORA_PROJ = ['juros', 'multa', 'iof', 'tarifa', 'parcfat', 'pagamento', 'credito'];
+/** Compras parceladas de uma fatura que ainda têm parcelas a vencer.
+ *  Quando a mesma compra aparece com várias parcelas na mesma fatura (antecipação), vale a maior. */
+function parcelasDaFatura(linhas) {
+  const grupos = new Map();
+  linhas.forEach(r => {
+    const m = r.parcela && String(r.parcela).match(/(\d+)\s*\/\s*(\d+)/);
+    if (!m || !(r.valor > 0) || CAT_FORA_PROJ.includes(r.categoria)) return;
+    const n = +m[1], N = +m[2]; if (!(N > 1 && n >= 1 && n <= N)) return;
+    const k = [r.desc, r.valor.toFixed(2), N, r.data].join('|'), g = grupos.get(k);
+    if (!g || n > g.n) grupos.set(k, { desc: r.desc, data: r.data || '', n, N, valor: Math.round(r.valor * 100) / 100,
+      viagem: r.categoria === 'viagem', chave: chaveEstab(r.desc), code: r.code || '' });
+  });
+  return [...grupos.values()].filter(g => g.n < g.N);
+}
+/** Soma das compras da agência (viagem ou marcada como Agência) na própria fatura, para a coluna "Fatura atual". */
+function agenciaNaFatura(linhas, regras) {
+  regras = regras || {};
+  return Math.round(linhas.reduce((a, r) => {
+    if (CAT_FORA_PROJ.includes(r.categoria) && r.categoria !== 'credito') return a;
+    const reg = regras[chaveEstab(r.desc)];
+    const ag = reg ? reg === 'agencia' : r.categoria === 'viagem' || (r.categoria === 'credito' && r.status === 'estorn');
+    return ag ? a + r.valor : a;
+  }, 0) * 100) / 100;
+}
+function somaMes(iso, k) { const y = +iso.slice(0, 4), m = +iso.slice(5, 7) - 1 + k; return (y + Math.floor(m / 12)) + '-' + p2(m % 12 + 1); }
+/**
+ * Projeção: registros = [{id, apelido, vencimento:'aaaa-mm-dd', itens:[parcelasDaFatura], agenciaAtual}], regras = {chave:'agencia'|'pessoal'}.
+ * Volta {meses:['aaaa-mm'], cartoes:[{apelido, vencimento, porMes, total, agenciaAtual}], porMes, total, itens, pendentes, pessoais}.
+ */
+function projetar(registros, regras) {
+  regras = regras || {};
+  const ultimo = new Map();
+  (registros || []).forEach(r => { if (!r || !r.vencimento) return; const u = ultimo.get(r.apelido); if (!u || r.vencimento > u.vencimento) ultimo.set(r.apelido, r); });
+  const meses = new Set(), cartoes = [], itens = [], pendentes = [], pessoais = [];
+  [...ultimo.values()].sort((a, b) => a.apelido.localeCompare(b.apelido)).forEach(r => {
+    const c = { apelido: r.apelido, vencimento: r.vencimento, porMes: {}, total: 0, agenciaAtual: r.agenciaAtual || 0, registro: r.id };
+    (r.itens || []).forEach(it => {
+      const reg = regras[it.chave];
+      const rest = it.N - it.n, base = Object.assign({}, it, { cartao: r.apelido, restantes: rest, totalRestante: Math.round(rest * it.valor * 100) / 100,
+        ultimaEm: somaMes(r.vencimento, rest), regra: reg || '' });
+      const ag = reg ? reg === 'agencia' : it.viagem ? true : null;
+      if (ag === null) { pendentes.push(base); return; }
+      if (!ag) { pessoais.push(base); return; }
+      itens.push(base);
+      for (let k = 1; k <= rest; k++) { const mes = somaMes(r.vencimento, k); meses.add(mes); c.porMes[mes] = Math.round(((c.porMes[mes] || 0) + it.valor) * 100) / 100; c.total += it.valor; }
+    });
+    c.total = Math.round(c.total * 100) / 100;
+    cartoes.push(c);
+  });
+  const ms = [...meses].sort(), porMes = {};
+  ms.forEach(m => { porMes[m] = Math.round(cartoes.reduce((a, c) => a + (c.porMes[m] || 0), 0) * 100) / 100; });
+  itens.sort((a, b) => a.ultimaEm.localeCompare(b.ultimaEm) || b.totalRestante - a.totalRestante);
+  return { meses: ms, cartoes, porMes, total: Math.round(cartoes.reduce((a, c) => a + c.total, 0) * 100) / 100, itens, pendentes, pessoais };
 }
 function resumoFaturas(linhas, infos) {
   return infos.map(f => {
@@ -634,5 +737,5 @@ function resumoParaPlanilha(faturas, ncPorArquivo = {}) {
   return out;
 }
 
-window.ConfCartao = { criarLeitor, detectBank, processarConferencia, linhasParaPlanilha, resumoParaPlanilha, infoVenda, SITUACOES, CATEGORIAS, CAT_ORDEM, DEFAULT_KW, fmtBR };
+window.ConfCartao = { metaFatura, chaveEstab, parcelasDaFatura, agenciaNaFatura, projetar, somaMes, criarLeitor, detectBank, processarConferencia, linhasParaPlanilha, resumoParaPlanilha, infoVenda, SITUACOES, CATEGORIAS, CAT_ORDEM, DEFAULT_KW, fmtBR };
 })();

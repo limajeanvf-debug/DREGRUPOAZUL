@@ -41,11 +41,17 @@ async function pdfFaturamentoLiquido(file){
   const TXT = [30,63,178,210,243,275,307,339];                         // início (x) das colunas de texto 0..7
   const NUM = [402,436,467,499,531,564,596,628,660,692,724,9999];      // fim (x) das colunas numéricas 8..19
   const ehData = t=>/^\d{2}\/\d{2}\/\d{2,4}$/.test(t);
-  const linhas = []; let achou = false;
+  const linhas = []; let achou = false, periodo = null, filtro = "";
   for(let p=1; p<=doc.numPages; p++){
     const pg = await doc.getPage(p), esc = pg.view[2]/842.25;
     const it = (await pg.getTextContent()).items.filter(i=>i.str && i.str.trim()).map(i=>({s:i.str.trim(), x:i.transform[4]/esc, y:i.transform[5], r:(i.transform[4]+i.width)/esc}));
-    if(p===1){ achou = it.some(i=>/FATURAMENTO LIQUIDO/i.test(normTxt(i.s).toUpperCase())); if(!achou) return null; }
+    if(p===1){
+      achou = it.some(i=>/FATURAMENTO LIQUIDO/i.test(normTxt(i.s).toUpperCase())); if(!achou) return null;
+      const cabTxt = it.map(i=>i.s).join(" ");
+      const mp = cabTxt.match(/Per[ií]odo:.*?(\d{2}\/\d{2}\/\d{4})\s*at[ée]\s*(\d{2}\/\d{2}\/\d{4})/i);
+      if(mp) periodo = {ini: mp[1].split("/").reverse().join("-"), fim: mp[2].split("/").reverse().join("-")};
+      const mf = cabTxt.match(/Filtro\(s\)\s*:\s*(.*?)(?:\s+\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}|$)/i); if(mf) filtro = mf[1].replace(/\s*-\s*$/,"").trim();
+    }
     const tot = it.find(i=>/^Totais/.test(i.s)), corte = tot ? tot.y+8 : -1;
     const rows = it.filter(i=>i.x<45 && ehData(i.s)).map(i=>({y:i.y, cel:{}})).sort((a,b)=>a.y-b.y);
     it.forEach(i=>{
@@ -67,7 +73,7 @@ async function pdfFaturamentoLiquido(file){
       linhas.push(out);
     });
   }
-  return {nome:file.name, cab:FAT_LIQ_CAB.slice(), linhas};
+  return {nome:file.name, cab:FAT_LIQ_CAB.slice(), linhas, periodo, filtro};
 }
 function lerRelatorioVendas(file){
   if(!/\.pdf$/i.test(file.name)) return lerPlanilha(file);
