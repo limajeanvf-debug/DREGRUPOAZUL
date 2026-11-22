@@ -49,8 +49,8 @@ async function bootstrapSchema() {
       // Sem ON CONFLICT: não há garantia de índice único em codigo.
       await pool.query(
         `INSERT INTO dre.categorias (tipo_categoria, codigo, nome, aplica_tipo, ordem)
-         SELECT $1,$2,$3,$4,$5
-         WHERE NOT EXISTS (SELECT 1 FROM dre.categorias WHERE codigo=$2)`, c);
+         SELECT $1::text,$2::text,$3::text,$4::text,$5::int
+         WHERE NOT EXISTS (SELECT 1 FROM dre.categorias WHERE codigo=$2::text)`, c);
     }
     const { rows } = await pool.query(
       `SELECT codigo FROM dre.categorias WHERE codigo IN ('ocu_internet','out_publicidade','out_royalties')`);
@@ -61,6 +61,10 @@ async function bootstrapSchema() {
   try {
     await pool.query('ALTER TABLE dre.usuarios ADD COLUMN IF NOT EXISTS permissoes JSONB');
   } catch (e) { logger.error('permissoes falhou: ' + (e.message)); }
+  // Operação desativada (Administração): sai da consolidação e das listas; os lançamentos ficam.
+  try {
+    await pool.query('ALTER TABLE dre.operacoes ADD COLUMN IF NOT EXISTS ativo BOOLEAN NOT NULL DEFAULT true');
+  } catch (e) { logger.error('operacoes.ativo falhou: ' + (e.message)); }
   // Controle de faturas: tabelas próprias, sem tocar em nada do DRE.
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS dre.fatura_tipos (
@@ -158,9 +162,39 @@ async function bootstrapSchema() {
       criado_por INT,
       criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
+    // Contas Administrativas → DRE: o que a conta somou no DRE (para desfazer ao editar ou excluir).
+    await pool.query('ALTER TABLE dre.faturas_adm ADD COLUMN IF NOT EXISTS dre JSONB');
     logger.info('schema cartoes/responsaveis/adm ok');
   } catch (e) {
     logger.error('bootstrapSchema cartoes falhou: ' + (e.message));
+  }  // Fluxo de caixa (Financeiro › Fluxo de Caixa, só admin): um registro por item, dados em JSON.
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.fluxo_caixa (
+      colecao TEXT NOT NULL,
+      id TEXT NOT NULL,
+      dados JSONB NOT NULL,
+      atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+      atualizado_por TEXT,
+      PRIMARY KEY (colecao, id)
+    )`);
+    logger.info('schema fluxo de caixa ok');
+  } catch (e) {
+    logger.error('bootstrapSchema fluxo de caixa falhou: ' + (e.message));
+  }
+  // Projeção de cartões (Faturas › Projeção de cartões): parcelas futuras de cada fatura importada e marcações
+  // Agência/Pessoal por estabelecimento. Sem número de cartão, CPF ou PDF: só apelido, descrição, datas e valores.
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS dre.cartao_projecao (
+      colecao TEXT NOT NULL,
+      id TEXT NOT NULL,
+      dados JSONB NOT NULL,
+      atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+      atualizado_por TEXT,
+      PRIMARY KEY (colecao, id)
+    )`);
+    logger.info('schema projeção de cartões ok');
+  } catch (e) {
+    logger.error('bootstrapSchema projeção de cartões falhou: ' + (e.message));
   }
 }
 bootstrapSchema().then(bootstrapModulos)
@@ -330,6 +364,13 @@ app.get('/api/me', auth(), async (req, res) => {
 app.get('/api/operacoes', auth(), async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM dre.operacoes ORDER BY id');
   res.json(rows);
+});
+app.patch('/api/operacoes/:id/ativo', auth(['admin']), async (req, res) => {
+  const ativo = req.body && req.body.ativo !== false;
+  const { rows } = await pool.query('UPDATE dre.operacoes SET ativo=$1 WHERE id=$2 RETURNING nome', [ativo, req.params.id]);
+  if (!rows.length) return res.status(404).json({ erro: 'operação inexistente' });
+  await logAudit(req.user.id, ativo ? 'Reativou operação' : 'Desativou operação', rows[0].nome);
+  res.json({ ok: true, ativo });
 });
 app.patch('/api/operacoes/:id/capital-social', perm(['operacao', 'consolidacao', 'balanco']), async (req, res) => {
   const { valor } = req.body;
@@ -577,6 +618,95 @@ const admOut = r => ({
   id: r.id, nome: r.nome, tipo: r.tipo, loja: r.loja,
   venc: r.vencimento ? new Date(r.vencimento).toISOString().slice(0, 10) : '',
   valor: Number(r.valor), pago: !!r.pago, por: r.pago_email || null,
+  dre: r.dre ? { codigo: r.dre.codigo, loja: r.dre.loja, ano: r.dre.ano, mes: r.dre.mes, valor: Number(r.dre.valor) } : null,
+});
+// ---------- Contas Administrativas → DRE ----------
+// A conta soma o seu valor na linha do DRE (operação = loja, categoria = codigo, competência = mês do vencimento).
+// O que foi somado fica em faturas_adm.dre; ao editar, desfaz e refaz; ao excluir, desfaz.
+async function admDreAlvo(db, loja, codigo, venc, valor) {
+  if (!codigo) return null;
+  const v = String(venc || '').match(/^(\d{4})-(\d{2})/);
+  if (!v) throw Object.assign(new Error('conta sem vencimento não entra no DRE'), { status: 400 });
+  const op = await db.query('SELECT id, nome, ativo FROM dre.operacoes WHERE nome=$1', [loja]);
+  if (!op.rows[0]) throw Object.assign(new Error('loja não é uma operação do DRE'), { status: 400 });
+  if (op.rows[0].ativo === false) throw Object.assign(new Error('operação desativada'), { status: 400 });
+  const cat = await db.query('SELECT id FROM dre.categorias WHERE codigo=$1', [codigo]);
+  if (!cat.rows[0]) throw Object.assign(new Error('linha do DRE inexistente: ' + codigo), { status: 400 });
+  return { opId: op.rows[0].id, catId: cat.rows[0].id, codigo, loja: op.rows[0].nome, ano: +v[1], mes: +v[2], valor: Math.round((Number(valor) || 0) * 100) / 100 };
+}
+async function admDreSomar(db, alvo, sinal, userId) {
+  if (!alvo || !alvo.valor) return;
+  const delta = sinal * alvo.valor;
+  const upd = await db.query(
+    `UPDATE dre.lancamentos SET valor=valor+$6, atualizado_em=now(), atualizado_por=$7
+      WHERE operacao_id=$1 AND categoria_id IS NOT DISTINCT FROM $2 AND credor_manual_id IS NOT DISTINCT FROM $3 AND mes=$4 AND ano=$5`,
+    [alvo.opId, alvo.catId, null, alvo.mes, alvo.ano, delta, userId]);
+  if (upd.rowCount === 0) {
+    await db.query(`INSERT INTO dre.lancamentos (operacao_id, categoria_id, credor_manual_id, mes, ano, valor, atualizado_por)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)`, [alvo.opId, alvo.catId, null, alvo.mes, alvo.ano, delta, userId]);
+  }
+}
+async function admTransacao(fn) {
+  const db = await pool.connect();
+  try { await db.query('BEGIN'); const r = await fn(db); await db.query('COMMIT'); return r; }
+  catch (e) { try { await db.query('ROLLBACK'); } catch (_) {} throw e; }
+  finally { db.release(); }
+}
+// ---------- Fluxo de caixa (só administradores) ----------
+const FLUXO_COLECOES = ['despesas', 'saldos', 'aportes', 'controles', 'movs', 'config'];
+app.get('/api/fluxo', auth(['admin']), async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT colecao, id, dados FROM dre.fluxo_caixa ORDER BY colecao, id');
+    res.json({ itens: rows });
+  } catch (e) { logger.error('fluxo GET: ' + e.message); res.status(500).json({ erro: 'falha ao ler o fluxo de caixa' }); }
+});
+app.put('/api/fluxo/:colecao/:id', auth(['admin']), async (req, res) => {
+  const { colecao, id } = req.params;
+  if (!FLUXO_COLECOES.includes(colecao) || !/^[\w-]{1,64}$/.test(id)) return res.status(400).json({ erro: 'item inválido' });
+  const dados = req.body && req.body.dados;
+  if (!dados || typeof dados !== 'object') return res.status(400).json({ erro: 'dados obrigatórios' });
+  try {
+    await pool.query(`INSERT INTO dre.fluxo_caixa (colecao, id, dados, atualizado_em, atualizado_por) VALUES ($1,$2,$3,now(),$4)
+      ON CONFLICT (colecao, id) DO UPDATE SET dados=EXCLUDED.dados, atualizado_em=now(), atualizado_por=EXCLUDED.atualizado_por`,
+      [colecao, id, JSON.stringify(dados), req.user.email]);
+    res.json({ ok: true });
+  } catch (e) { logger.error('fluxo PUT: ' + e.message); res.status(500).json({ erro: 'falha ao salvar' }); }
+});
+app.delete('/api/fluxo/:colecao/:id', auth(['admin']), async (req, res) => {
+  const { colecao, id } = req.params;
+  if (!FLUXO_COLECOES.includes(colecao)) return res.status(400).json({ erro: 'item inválido' });
+  try {
+    await pool.query('DELETE FROM dre.fluxo_caixa WHERE colecao=$1 AND id=$2', [colecao, id]);
+    res.json({ ok: true });
+  } catch (e) { logger.error('fluxo DELETE: ' + e.message); res.status(500).json({ erro: 'falha ao excluir' }); }
+});
+// ---------- Projeção de cartões (aba Faturas) ----------
+const CPROJ_COLECOES = ['faturas', 'regras', 'apelidos'];
+app.get('/api/cartao-projecao', permMin('faturas', 'ver'), async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT colecao, id, dados FROM dre.cartao_projecao ORDER BY colecao, id');
+    res.json({ itens: rows });
+  } catch (e) { logger.error('cartao-projecao GET: ' + e.message); res.status(500).json({ erro: 'falha ao ler a projeção' }); }
+});
+app.put('/api/cartao-projecao/:colecao/:id', perm('faturas'), async (req, res) => {
+  const { colecao, id } = req.params;
+  if (!CPROJ_COLECOES.includes(colecao) || !/^[\w-]{1,120}$/.test(id)) return res.status(400).json({ erro: 'item inválido' });
+  const dados = req.body && req.body.dados;
+  if (!dados || typeof dados !== 'object') return res.status(400).json({ erro: 'dados obrigatórios' });
+  try {
+    await pool.query(`INSERT INTO dre.cartao_projecao (colecao, id, dados, atualizado_em, atualizado_por) VALUES ($1,$2,$3,now(),$4)
+      ON CONFLICT (colecao, id) DO UPDATE SET dados=EXCLUDED.dados, atualizado_em=now(), atualizado_por=EXCLUDED.atualizado_por`,
+      [colecao, id, JSON.stringify(dados), req.user.email]);
+    res.json({ ok: true });
+  } catch (e) { logger.error('cartao-projecao PUT: ' + e.message); res.status(500).json({ erro: 'falha ao salvar' }); }
+});
+app.delete('/api/cartao-projecao/:colecao/:id', perm('faturas'), async (req, res) => {
+  const { colecao, id } = req.params;
+  if (!CPROJ_COLECOES.includes(colecao)) return res.status(400).json({ erro: 'item inválido' });
+  try {
+    await pool.query('DELETE FROM dre.cartao_projecao WHERE colecao=$1 AND id=$2', [colecao, id]);
+    res.json({ ok: true });
+  } catch (e) { logger.error('cartao-projecao DELETE: ' + e.message); res.status(500).json({ erro: 'falha ao excluir' }); }
 });
 app.get('/api/faturas-adm', auth(), async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM dre.faturas_adm ORDER BY vencimento NULLS LAST, id');
@@ -597,17 +727,55 @@ app.delete('/api/faturas-adm/tipos/:nome', perm(['faturas', 'contasadm']), async
   res.json({ ok: true });
 });
 app.post('/api/faturas-adm', perm(['faturas', 'contasadm']), async (req, res) => {
-  const { nome, tipo, loja, venc, valor } = req.body;
+  const { nome, tipo, loja, venc, valor, dre } = req.body;
   if (!String(nome || '').trim()) return res.status(400).json({ erro: 'nome obrigatorio' });
-  const { rows } = await pool.query(
-    `INSERT INTO dre.faturas_adm (nome, tipo, loja, vencimento, valor, criado_por)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [String(nome).trim(), tipo || '', loja || '', venc || null, Number(valor) || 0, req.user.id]);
-  await logAudit(req.user.id, 'Lançou fatura administrativa', `${rows[0].nome} · ${rows[0].loja}`);
-  res.json(admOut(rows[0]));
+  try {
+    const row = await admTransacao(async db => {
+      const alvo = await admDreAlvo(db, loja || '', dre, venc, valor);
+      const { rows } = await db.query(
+        `INSERT INTO dre.faturas_adm (nome, tipo, loja, vencimento, valor, criado_por, dre)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [String(nome).trim(), tipo || '', loja || '', venc || null, Number(valor) || 0, req.user.id, alvo ? JSON.stringify(alvo) : null]);
+      await admDreSomar(db, alvo, +1, req.user.id);
+      return rows[0];
+    });
+    await logAudit(req.user.id, 'Lançou fatura administrativa', `${row.nome} · ${row.loja}` + (row.dre ? ` · DRE ${row.dre.codigo} ${row.dre.mes}/${row.dre.ano}` : ''));
+    res.json(admOut(row));
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ erro: e.message });
+    logger.error('faturas-adm POST: ' + e.message); res.status(500).json({ erro: 'falha ao lançar' });
+  }
 });
 app.patch('/api/faturas-adm/:id', perm(['faturas', 'contasadm']), async (req, res) => {
   const { nome, tipo, loja, venc, valor, pago } = req.body;
+  // dre: código da linha do DRE. Presente quando a conta já está (ou passa a estar) no DRE:
+  // desfaz o que foi somado antes e soma de novo com os dados novos, tudo numa transação.
+  if (req.body.dre !== undefined) {
+    try {
+      const row = await admTransacao(async db => {
+        const atual = (await db.query('SELECT * FROM dre.faturas_adm WHERE id=$1 FOR UPDATE', [req.params.id])).rows[0];
+        if (!atual) throw Object.assign(new Error('fatura inexistente'), { status: 404 });
+        const novo = {
+          nome: nome !== undefined ? String(nome).trim() : atual.nome, tipo: tipo !== undefined ? (tipo || '') : atual.tipo,
+          loja: loja !== undefined ? (loja || '') : atual.loja,
+          venc: venc !== undefined ? (venc || null) : (atual.vencimento ? new Date(atual.vencimento).toISOString().slice(0, 10) : null),
+          valor: valor !== undefined ? (Number(valor) || 0) : Number(atual.valor),
+        };
+        const alvo = await admDreAlvo(db, novo.loja, req.body.dre, novo.venc, novo.valor);
+        if (atual.dre) await admDreSomar(db, atual.dre, -1, req.user.id);
+        await admDreSomar(db, alvo, +1, req.user.id);
+        const { rows } = await db.query(
+          `UPDATE dre.faturas_adm SET nome=$1, tipo=$2, loja=$3, vencimento=$4, valor=$5, dre=$6 WHERE id=$7 RETURNING *`,
+          [novo.nome, novo.tipo, novo.loja, novo.venc, novo.valor, alvo ? JSON.stringify(alvo) : null, req.params.id]);
+        return rows[0];
+      });
+      await logAudit(req.user.id, 'Atualizou conta administrativa no DRE', `${row.nome} · ${row.loja}`);
+      return res.json(admOut(row));
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ erro: e.message });
+      logger.error('faturas-adm PATCH dre: ' + e.message); return res.status(500).json({ erro: 'falha ao atualizar' });
+    }
+  }
   const sets = [];
   const vals = [];
   const add = (sql, v) => { vals.push(v); sets.push(`${sql}=$${vals.length}`); };
@@ -632,9 +800,15 @@ app.patch('/api/faturas-adm/:id', perm(['faturas', 'contasadm']), async (req, re
   res.json(admOut(rows[0]));
 });
 app.delete('/api/faturas-adm/:id', perm(['faturas', 'contasadm']), async (req, res) => {
-  const { rows } = await pool.query('DELETE FROM dre.faturas_adm WHERE id=$1 RETURNING nome, loja', [req.params.id]);
-  if (rows.length) await logAudit(req.user.id, 'Excluiu fatura administrativa', `${rows[0].nome} · ${rows[0].loja}`);
-  res.json({ ok: true });
+  try {
+    const rows = await admTransacao(async db => {
+      const r = await db.query('DELETE FROM dre.faturas_adm WHERE id=$1 RETURNING nome, loja, dre', [req.params.id]);
+      if (r.rows[0] && r.rows[0].dre) await admDreSomar(db, r.rows[0].dre, -1, req.user.id);
+      return r.rows;
+    });
+    if (rows.length) await logAudit(req.user.id, 'Excluiu fatura administrativa', `${rows[0].nome} · ${rows[0].loja}` + (rows[0].dre ? ' · retirada do DRE' : ''));
+    res.json({ ok: true });
+  } catch (e) { logger.error('faturas-adm DELETE: ' + e.message); res.status(500).json({ erro: 'falha ao excluir' }); }
 });
 
 // ---------- checklist de cartões ----------
@@ -648,16 +822,8 @@ const CHECK_OUT = `k.id, k.cartao_id AS "cartaoId", to_char(k.competencia,'YYYY-
 
 app.get('/api/cartoes', auth(), async (req, res) => {
   const comp = compToDate(req.query.comp) || new Date().toISOString().slice(0, 8) + '01';
-  await pool.query(
-    `INSERT INTO dre.cartao_checks (cartao_id, competencia, vencimento, valor)
-     SELECT c.id, $1::date,
-       $1::date + (LEAST(c.dia_venc, EXTRACT(DAY FROM ($1::date + interval '1 month' - interval '1 day'))::int) - 1),
-       COALESCE((SELECT k.valor FROM dre.cartao_checks k
-                 WHERE k.cartao_id=c.id AND k.competencia < $1::date AND NOT k.removido
-                 ORDER BY k.competencia DESC LIMIT 1), c.valor_previsto)
-     FROM dre.cartoes c
-     WHERE c.inicio <= $1::date AND (c.fim IS NULL OR c.fim > $1::date)
-     ON CONFLICT (cartao_id, competencia) DO NOTHING`, [comp]);
+  // O checklist não se replica sozinho: cada mês recebe a lista do anterior pelo botão "Trazer cartões"
+  // (POST /api/cartoes/transferir). Os meses já gerados continuam como estão.
   const { rows: cartoes } = await pool.query(
     `SELECT ${CARTAO_OUT} FROM dre.cartoes c WHERE c.fim IS NULL ORDER BY c.dia_venc, c.nome`);
   const { rows: checks } = await pool.query(
@@ -674,6 +840,11 @@ app.post('/api/cartoes', perm('faturas'), async (req, res) => {
   const { rows } = await pool.query(
     `INSERT INTO dre.cartoes (nome, dia_venc, valor_previsto, inicio, criado_por)
      VALUES ($1,$2,$3,$4,$5) RETURNING id`, [nome, dia, Number(req.body.valor) || 0, inicio, req.user.id]);
+  // O cartão novo entra no checklist do mês em que foi cadastrado.
+  await pool.query(
+    `INSERT INTO dre.cartao_checks (cartao_id, competencia, vencimento, valor)
+     VALUES ($1, $2::date, $2::date + (LEAST($3::int, EXTRACT(DAY FROM ($2::date + interval '1 month' - interval '1 day'))::int) - 1), 0)
+     ON CONFLICT (cartao_id, competencia) DO NOTHING`, [rows[0].id, inicio, dia]);
   await logAudit(req.user.id, 'Cadastrou cartão', `${nome} · dia ${dia}`);
   res.json({ id: rows[0].id });
 });
@@ -706,6 +877,26 @@ app.delete('/api/cartoes/:id', perm('faturas'), async (req, res) => {
   res.json({ ok: true });
 });
 
+// Copia para o mês "para" os cartões listados (não removidos) no mês "de"; reativa os que foram removidos em "para".
+app.post('/api/cartoes/transferir', perm('faturas'), async (req, res) => {
+  const de = compToDate(req.body.de), para = compToDate(req.body.para);
+  if (!de || !para) return res.status(400).json({ erro: 'competências inválidas' });
+  try {
+    const ins = await pool.query(
+      `INSERT INTO dre.cartao_checks (cartao_id, competencia, vencimento, valor)
+       SELECT k.cartao_id, $2::date,
+         $2::date + (LEAST(c.dia_venc, EXTRACT(DAY FROM ($2::date + interval '1 month' - interval '1 day'))::int) - 1), 0
+       FROM dre.cartao_checks k JOIN dre.cartoes c ON c.id=k.cartao_id
+       WHERE k.competencia=$1::date AND NOT k.removido AND (c.fim IS NULL OR c.fim > $2::date)
+       ON CONFLICT (cartao_id, competencia) DO NOTHING`, [de, para]);
+    const reat = await pool.query(
+      `UPDATE dre.cartao_checks t SET removido=false
+       FROM dre.cartao_checks k
+       WHERE t.competencia=$2::date AND t.removido AND k.cartao_id=t.cartao_id AND k.competencia=$1::date AND NOT k.removido`, [de, para]);
+    await logAudit(req.user.id, 'Trouxe cartões do mês anterior', `${req.body.de} → ${req.body.para}`);
+    res.json({ inseridos: ins.rowCount + reat.rowCount });
+  } catch (e) { logger.error('cartoes transferir: ' + e.message); res.status(500).json({ erro: 'falha ao transferir' }); }
+});
 app.patch('/api/cartoes/checks/:id', perm('faturas'), async (req, res) => {
   const { conferido, valor, removido } = req.body;
   const sets = [];
