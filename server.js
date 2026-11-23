@@ -653,7 +653,7 @@ async function admTransacao(fn) {
   finally { db.release(); }
 }
 // ---------- Fluxo de caixa (só administradores) ----------
-const FLUXO_COLECOES = ['despesas', 'saldos', 'aportes', 'controles', 'movs', 'config'];
+const FLUXO_COLECOES = ['despesas', 'saldos', 'aportes', 'controles', 'movs', 'config', 'planilhas'];
 app.get('/api/fluxo', auth(['admin']), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT colecao, id, dados FROM dre.fluxo_caixa ORDER BY colecao, id');
