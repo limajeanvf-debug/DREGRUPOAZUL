@@ -173,3 +173,12 @@ function lerRelatorioDre(file){
   if(!/\.pdf$/i.test(file.name)) return lerPlanilha(file).then(p=>planilhaFatBruto(p) || p);
   return pdfFaturamentoBruto(file).catch(()=>null).then(r=>r || lerPlanilha(file));
 }
+// Folha de pagamento: evento ou coluna da folha → linha de Pessoal do DRE.
+const FOLHA_EVENTOS = [
+  [/estagi|bolsa aux/, "pes_estag"], [/diaria/, "pes_diarias"], [/comiss/, "pes_comis"], [/\bdsr\b|descanso semanal/, "pes_dsr"],
+  [/13|decimo terceiro/, "pes_13"], [/ferias/, "pes_ferias"], [/inss|fgts|encargo|patronal|\brat\b|terceiros|sat\b|contribuic/, "pes_enc"],
+  [/exame|\baso\b|medic/, "pes_exames"], [/bonus|premi|gratifica/, "pes_bonus"], [/refeic|alimenta|\bvr\b|\bva\b|ticket/, "pes_vr"],
+  [/transporte|\bvt\b|combustiv/, "pes_vt"], [/saude|odonto|medico/, "pes_saude"], [/salario|ordenado|hora extra|horas extras|adicional|insalubr|periculos|\bsal\b/, "pes_sal"],
+  [/beneficio|seguro de vida|auxilio/, "pes_outros"],
+];
+function sugerirFolha(desc){ const t = normTxt(desc); const m = FOLHA_EVENTOS.find(([rx])=>rx.test(t)); return m ? m[1] : ""; }

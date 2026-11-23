@@ -6,8 +6,10 @@ const FD_EMPRESAS = [
   {id:"sonho", label:"Sonho Azul", temDU:true, setores:["The Blue- Prime e Grupos","The Blue- Corporativo Brasil Eduardo","Diretoria"], excluir:["DIGISAC"],
     dica:"Importe o PDF do relatório Faturamento Líquido do sistema de vendas ou a planilha (aba PLANILHA GERAL). No PDF, o promotor DIRETORIA vai para Diretoria, EDUARDO para The Blue- Corporativo Brasil Eduardo e os demais para The Blue- Prime e Grupos. Digisac não entra no relatório."},
   {id:"arranjos", label:"Arranjos Express", temDU:false, royalties:0.06, marketing:0.02, setores:["RECIFE","CONSELHEIRO"], excluir:["17 DE AGOSTO"],
-    dica:"Importe a planilha mensal das lojas (colunas LOJA · FATURAMENTO R$) ou digite o faturamento de cada dia direto na tabela. Royalties 6% e marketing 2% sobre o projetado."},
+    dica:"Importe a planilha mensal das lojas (colunas LOJA · FATURAMENTO R$) ou digite o faturamento de cada dia direto na tabela. O total do mês de cada loja vai sozinho para o DRE (Faturamento Venda de Arranjos) na mesma competência. Royalties 6% e marketing 2% sobre o projetado."},
 ];
+// Arranjos Express: setor da planilha → operação do DRE (o faturamento do mês vai para "Faturamento Venda de Arranjos").
+const FD_ARRANJOS_OPERACAO = {"RECIFE":"Loja Arranjos Express Shopping Recife", "CONSELHEIRO":"Loja Arranjos Express Conselheiro Aguiar"};
 const FD_SEMANA = ["dom","seg","ter","qua","qui","sex","sáb"];
 function fdNorm(v){ return String(v==null?"":v).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9%]+/g," ").trim(); }
 function fdNum(v){

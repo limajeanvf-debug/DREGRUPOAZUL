@@ -190,3 +190,97 @@ function fcMigrarParaPlanilhas(fc){
   });
   return out;
 }
+
+// ===== Importar a planilha do Excel do fluxo de caixa =====
+// Procura, em todas as abas, cada tabela que tem uma coluna "HISTÓRICO" no cabeçalho (tabelas lado a lado ou uma
+// embaixo da outra). O tipo vem do cabeçalho: ABATIMENTO + dias/correção/data → Aportes; EMPRESA → Despesas;
+// ABATIMENTO + SALDO → Valor, abatimento e saldo; o resto vira Tabela livre com as mesmas colunas.
+// Linhas FATURAS/TOTAL/FINAL são recalculadas pelo sistema; o valor da linha SALDO vira o saldo da planilha.
+function fcNormCab(v){ return v instanceof Date ? "#data" : String(v==null?"":v).normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9#º]+/g," ").trim(); }
+function fcIsoDeExcel(v){ if(v instanceof Date && !isNaN(v)){ const d = new Date(v.getTime() + 6*3600e3); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); } return null; }
+function fcCelulaExcel(tipo, v){
+  const iso = fcIsoDeExcel(v);
+  if(iso) return tipo==="data" ? iso : tipo==="texto" ? fcFmtData(iso) : null;
+  if(tipo==="dias") return typeof v==="number" ? Math.round(v) : fcCelula(tipo, v);
+  if(tipo==="data" && typeof v==="number") return fcFmtValor(v); // número numa coluna de data: guarda como texto
+  return fcCelula(tipo, typeof v==="number" && tipo==="texto" ? String(v) : v);
+}
+function fcTabelasDoExcel(wb){
+  const blocos = [];
+  wb.SheetNames.forEach(sn=>{
+    const ws = wb.Sheets[sn]; if(!ws || !ws["!ref"]) return;
+    const aoa = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:""});
+    const dentroDeMescla = {};
+    (ws["!merges"]||[]).forEach(m=>{ for(let r=m.s.r; r<=m.e.r; r++) for(let c=m.s.c; c<=m.e.c; c++) if(c>m.s.c) dentroDeMescla[r+":"+c] = true; });
+    const vazia = v=>v==null || (typeof v==="string" && !v.trim());
+    aoa.forEach((row, r)=>{
+      row.forEach((cel, c)=>{
+        if(fcNormCab(cel)!=="historico") return;
+        const livre = cc=>vazia(row[cc]) && !dentroDeMescla[r+":"+cc];
+        let c0 = c; while(c0>0 && !livre(c0-1)) c0--;
+        // Uma coluna sem título no meio do cabeçalho (ex.: HISTÓRICO mesclado, coluna vazia, DATA VENC) não corta a
+        // tabela quando está vazia embaixo e o pedaço seguinte não é outra tabela (não tem HISTÓRICO).
+        const colVaziaAbaixo = cc=>{ for(let rr=r+1; rr<Math.min(aoa.length, r+60); rr++){ const l = aoa[rr]||[];
+          if(l.slice(c0, cc+1).some(v=>fcNormCab(v)==="historico")) break; if(!vazia(l[cc])) return false; } return true; };
+        const temHistAte = cc=>{ for(let k=cc; k<row.length && !livre(k); k++) if(fcNormCab(row[k])==="historico") return true; return false; };
+        let c1 = c;
+        for(;;){
+          if(c1+1<row.length && !livre(c1+1)){ c1++; continue; }
+          if(c1+2<row.length && livre(c1+1) && !livre(c1+2) && colVaziaAbaixo(c1+1) && !temHistAte(c1+2)){ c1 += 2; continue; }
+          break;
+        }
+        const cols = []; for(let cc=c0; cc<=c1; cc++) if(!dentroDeMescla[r+":"+cc] && !vazia(row[cc])) cols.push(cc);
+        const cab = cols.map(cc=>row[cc]), nc = cab.map(fcNormCab);
+        const linhas = []; let saldo = null, brancas = 0;
+        for(let rr=r+1; rr<aoa.length; rr++){
+          const vals = cols.map(cc=>(aoa[rr]||[])[cc]);
+          if(vals.some(v=>fcNormCab(v)==="historico")) break;
+          if(vals.every(vazia)){ if(++brancas>=3) break; continue; }
+          brancas = 0;
+          const primeiroTxt = fcNormCab(vals.find(v=>typeof v==="string" && v.trim()) || "");
+          if(/^saldo\b/.test(primeiroTxt) && vals.filter(v=>typeof v==="string" && v.trim()).length===1){ const n = vals.find(v=>typeof v==="number" || fcValorDe(v)!=null); saldo = n==null ? null : fcValorDe(n); continue; }
+          if(/^(faturas|final|totais?)\b|aporte total|\btotal$/.test(primeiroTxt)) continue;
+          linhas.push(vals);
+        }
+        blocos.push({aba:sn, ordemAba:wb.SheetNames.indexOf(sn), r, c0, cab, nc, linhas, saldo});
+      });
+    });
+  });
+  // Ordem de leitura: aba, depois as tabelas da esquerda (de cima para baixo), depois as da direita.
+  blocos.sort((a,b)=>a.ordemAba-b.ordemAba || a.c0-b.c0 || a.r-b.r);
+  return blocos.map(fcPlanilhaDoBloco).filter(Boolean);
+}
+function fcPlanilhaDoBloco(b){
+  const nc = b.nc, acha = rx=>nc.findIndex(h=>rx.test(h));
+  const temAbat = acha(/abatimento/)>=0, temData = nc.includes("#data");
+  let modelo = "livre";
+  if(temAbat && (acha(/dias|correcao/)>=0 || temData)) modelo = "aportes";
+  else if(acha(/empresa/)>=0) modelo = "despesas";
+  else if(temAbat && acha(/saldo/)>=0) modelo = "controle";
+  const p = fcNovaPlanilha(modelo);
+  let mapa;
+  if(modelo==="aportes"){
+    const iData = temData ? nc.indexOf("#data") : acha(/^data/);
+    mapa = [acha(/^numero|^n(º|o)?$/), acha(/^historico/), acha(/^valor/), acha(/abatimento/), iData, acha(/dias/), -1, -1];
+    if(temData){ const iso = fcIsoDeExcel(b.cab[iData]); if(iso) p.ref = iso; }
+  } else if(modelo==="despesas") mapa = [acha(/^historico/), acha(/^valor/), acha(/venc|^data/), acha(/empresa/)];
+  else if(modelo==="controle") mapa = [acha(/^historico/), acha(/^data/), acha(/^valor/), acha(/abatimento/), -1];
+  else {
+    p.colunas = b.cab.map((h,i)=>{
+      const vs = b.linhas.map(l=>l[i]).filter(v=>!(v==null || v===""));
+      const nNum = vs.filter(v=>typeof v==="number" || (typeof v==="string" && /R\$|^-?[\d.]+,\d{2}$/.test(v.trim()))).length;
+      const nData = vs.filter(v=>v instanceof Date || (typeof v==="string" && /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(v.trim()))).length;
+      const nome = h instanceof Date ? fcFmtData(fcIsoDeExcel(h)) : String(h).trim();
+      const tipo = /^historico/.test(b.nc[i]) ? "texto" : nData && nData>=vs.length/2 ? "data" : nNum && nNum>=vs.length/2 ? "valor" : "texto";
+      return {nome: (nome.charAt(0) + nome.slice(1).toLowerCase()).replace(/r\$/g, "R$"), tipo};
+    });
+    mapa = b.cab.map((_,i)=>i);
+  }
+  p.linhas = b.linhas.map(vals=>p.colunas.map((col,j)=>{ const i = mapa[j]; if(i==null || i<0 || col.tipo==="calc") return null; return fcCelulaExcel(col.tipo, vals[i]); }))
+    .filter(l=>!fcLinhaVazia(l));
+  if(modelo==="aportes") p.linhas.forEach(l=>{ if(!(Math.abs(typeof l[3]==="number" ? l[3] : 0)>0)) l[5] = null; });
+  if(modelo==="despesas") p.saldo = b.saldo;
+  const hist = p.linhas.map(l=>l[p.colunas.findIndex(c=>/hist/i.test(c.nome))]).find(v=>typeof v==="string" && v.trim());
+  p.titulo = modelo==="despesas" ? "DESPESAS" : modelo==="aportes" ? "APORTES" : String(hist || FC_MODELOS[modelo].label).toUpperCase().slice(0,48);
+  return p.linhas.length || p.saldo!=null ? p : null;
+}
