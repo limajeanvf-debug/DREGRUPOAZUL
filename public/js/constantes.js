@@ -2,9 +2,10 @@
 // Carregado como script comum antes do componente (ver <head> do Sistema Grupo Azul.dc.html).
 // Versão do sistema, mostrada no menu lateral e na tela de login. Atualize a cada deploy:
 // 1º número = mudança grande, 2º = tela ou recurso novo, 3º = correção. A data é a do deploy (aaaa-mm-dd).
-const VERSAO_SISTEMA = "1.4.0", VERSAO_DATA = "2026-11-22";
+const VERSAO_SISTEMA = "1.4.2", VERSAO_DATA = "2026-11-24";
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-const YEARS = [2025,2026,2027];
+// De 2025 até o ano que vem: a competência vigente sempre existe na lista de anos.
+const YEARS = Array.from({length: Math.max(3, new Date().getFullYear() - 2025 + 2)}, (_,i)=>2025+i);
 const UNIT_DEFS = [
 {name:"Loja Azul Viagens Shopping Recife",tipo:"turismo",cor:"#1d4ed8"},
 {name:"Loja Azul Viagens João Roma",tipo:"turismo",cor:"#2563eb"},
