@@ -164,6 +164,9 @@
         <span style="color:#CBD5E1;">/</span>
         <span style="font-weight:800;">{{ crumbPagina }}</span>
       </header>
+      <sc-if value="{{ dreAviso }}" hint-placeholder-val="{{ false }}">
+        <div role="alert" style="margin:14px 28px 0;font-size:12.5px;font-weight:600;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:9px 12px;">{{ dreAviso }}</div>
+      </sc-if>
     <sc-if value="{{ isModFin }}" hint-placeholder-val="{{ true }}">
     <div style="padding:20px 28px;display:flex;flex-direction:column;gap:16px;">
       <sc-if value="{{ showFinTopo }}" hint-placeholder-val="{{ true }}">
@@ -2445,22 +2448,23 @@ class Component extends DCLogic {
     showAuthSenha: false,
     view: "operacao",
     opIndex: 0,
-    month: 6,
-    year: 2026,
+    // O sistema abre sempre na competência vigente (mês atual), em todos os menus.
+    month: new Date().getMonth(),
+    year: new Date().getFullYear(),
     units: UNIT_DEFS.map(u=>({name:u.name, tipo:u.tipo, cor:u.cor, values:{}, capitalSocial:0, customRows:{}, ativo: !lerJSON(LS_OPS_INATIVAS, []).includes(u.name)})),
     newCredorLabel: "",
     newOutraLabel: "",
     confirmClear: false,
     debts: [], auditLog: [], locks: {},
-    newDebtCredor: "", newDebtValorRaw: 0, newDebtMes: 6, newDebtAno: 2026, newDebtJuros: 0,
+    newDebtCredor: "", newDebtValorRaw: 0, newDebtMes: new Date().getMonth(), newDebtAno: new Date().getFullYear(), newDebtJuros: 0,
     adminOpen: false,
     newUserEmail:"", newUserSenha:"", newUserRole:"usuario",
     changeUserEmail:"", changeUserSenha:"", adminMsg:"",
-    exportMonth: 6, exportYear: 2026, exportScope: "consolidado", exportLoja: "todas",
+    exportMonth: new Date().getMonth(), exportYear: new Date().getFullYear(), exportScope: "consolidado", exportLoja: "todas",
     opIdByName: {}, catIdByCode: {}, catCodeById: {}, opNameById: {},
     // Controle de faturas — módulo independente do DRE (localStorage próprio)
     faturas: [], faturaTipos: FATURA_TIPOS_PADRAO.slice(),
-    faturaFiltro: "todas", faturaComp: "", newTipoFatura: "",
+    faturaFiltro: "todas", faturaComp: compAtualISO(), newTipoFatura: "",
     faturaSub: "lancamentos", responsaveis: [], newResp: "", respPendentes: [], respAviso: "", bancos: [], newBanco: "", bancoAviso: "", recPend: {}, recAviso: "", recFaltaBanco: null,
     adm: [], admTipos: ADM_TIPOS_PADRAO.slice(), admComp: compAtualISO(), admFiltro: "todas", admLoja: "", admErro: "", admMsg: "", newAdmTipo: "",
     naNome: "", naTipo: ADM_TIPOS_PADRAO[0], naLoja: "", naVenc: "", naValorRaw: 0,
@@ -2473,9 +2477,9 @@ class Component extends DCLogic {
     fcNd: {hist:"", valorRaw:0, venc:fcHojeISO(), emp:""}, fcNa: {num:"", inv:"JOÃO", hist:"", valorRaw:0, data:fcHojeISO(), abatRaw:0, quit:""},
     fcNc: "", fcNm: {}, fcEdit: {}, fcNovaEmp: "", fcAviso: "", fcCarregando: false, fcDraft: {}, fcNovaAberta: false,
     cp: null, cpCarregando: false, cpAviso: "", ccProj: [],
-    fdEmp: "azul", fdComp: comModoLocal() ? FD_DEMO_COMP.azul : new Date().toISOString().slice(0,7), fdDados: {}, fdDraft: {}, fdMsg: "", fdErro: "", fdHover: -1, comDiaHover: -1,
+    fdEmp: "azul", fdComp: MODO_PREVIA ? FD_DEMO_COMP.azul : compAtualISO(), fdDados: {}, fdDraft: {}, fdMsg: "", fdErro: "", fdHover: -1, comDiaHover: -1,
     hdChamados: [], hdAtendentes: [], hdFiltro: "abertos", hdSel: null, hdFormOpen: false, hdNovo: hdNovoVazio(), hdErro: "", hdErroDet: "", hdResposta: "", hdInterno: false,
-    comVendas: [], comLotes: [], comCarregado: false, comSub: "painel", comComissoes: {}, comMetrica: "liquido", cmComp: new Date().toISOString().slice(0,7), cmDados: null, cmCompCarregada: "", cmCarregando: false, cmSujo: false, cmSalvando: false, cmMsg: "", cmMsgErro: false, cmInfo: "", comAno: "", comMes: "", comLoja: "", comVendedor: "", comArq: null, comErroImp: "", comImpMsg: "", comEnviando: false, comErro: "",
+    comVendas: [], comLotes: [], comCarregado: false, comSub: "painel", comComissoes: {}, comMetrica: "liquido", cmComp: compAtualISO(), cmDados: null, cmCompCarregada: "", cmCarregando: false, cmSujo: false, cmSalvando: false, cmMsg: "", cmMsgErro: false, cmInfo: "", comAno: "", comMes: "", comLoja: "", comVendedor: "", comArq: null, comErroImp: "", comImpMsg: "", comEnviando: false, comErro: "",
     impArq: {}, impMap: lerJSON(LS_IMP_MAP, {}), impColab: lerJSON(LS_IMP_COLAB, {}), impModo: "substituir", impMsg: "", impMsgOk: true, impEnviando: false, impErro: "",
     rhColab: [], rhAus: [], rhSub: "painel", rhBusca: "", rhLoja: "", rhDesligados: false, rhForm: rhFormVazio(), rhFormOpen: false, rhAusFormOpen: false, ausForm: ausFormVazio(), rhErro: "",
   };
@@ -2559,6 +2563,7 @@ class Component extends DCLogic {
         if(this.activeEditKeys().length) return;
         // campo focado só congela a sincronização por 8s após a última digitação
         if(this._editingField && this._lastEditTs && Date.now()-this._lastEditTs < 8000) return;
+        if(this._pendDre && Object.keys(this._pendDre).length) this.reenviarPendentes();
         this.loadFromApi();
       }, 4000);
       this._sessaoExpiradaHandler = ()=>{
@@ -2654,6 +2659,8 @@ class Component extends DCLogic {
             values[code] = {...values[code], [`${year}-${l.mes-1}`]: parseFloat(l.valor)};
           }));
         }
+        // Valores ainda não confirmados pelo servidor ficam como estão na tela (senão a sincronização os apagava).
+        Object.values(this._pendDre||{}).forEach(x=>{ if(x.nome===u.name) values[x.rowId] = {...values[x.rowId], [x.ano+"-"+x.mes]: x.v}; });
         return {...u, capitalSocial: op ? parseFloat(op.capital_social)||0 : (u.capitalSocial||0), customRows, values, ativo: op && op.ativo!=null ? op.ativo!==false : u.ativo!==false};
       });
       const [debts, locksRows] = await Promise.all([apiFetch("/api/dividas"), apiFetch("/api/locks")]);
@@ -3469,11 +3476,33 @@ class Component extends DCLogic {
   agendarCommit(unitIdx, rowId){
     if(!this._commitTimers) this._commitTimers = {};
     const k = `${unitIdx}:${rowId}`;
+    // O valor fica marcado como pendente desde já: a sincronização não pode trocá-lo pelo valor antigo do servidor.
+    this.marcarPendente(unitIdx, rowId, this.state.year, this.state.month);
     clearTimeout(this._commitTimers[k]);
     this._commitTimers[k] = setTimeout(()=>{
       delete this._commitTimers[k];
       this.commitValue(unitIdx, rowId);
     }, 900);
+  }
+  // Valores do DRE ainda não confirmados pelo servidor: {"nomeOp|linha|ano-mes": {nome, rowId, ano, mes, v}}.
+  marcarPendente(unitIdx, rowId, ano, mes){
+    const u = this.state.units[unitIdx]; if(!u) return;
+    this._pendDre = this._pendDre || {};
+    this._pendDre[u.name+"|"+rowId+"|"+ano+"-"+mes] = {nome:u.name, rowId, ano, mes, v:getVal(u, rowId, ano, mes), desde:Date.now()};
+  }
+  reenviarPendentes(){
+    const p = this._pendDre || {}, s = this.state;
+    Object.entries(p).forEach(([k, x])=>{
+      if(x.enviando) return;
+      const opId = s.opIdByName[x.nome], catId = s.catIdByCode[x.rowId];
+      const isCredor = x.rowId.indexOf("credor_")===0;
+      if(!opId || (catId==null && !isCredor)) return;
+      x.enviando = true;
+      apiFetch("/api/lancamentos", {method:"PUT", body:JSON.stringify({operacaoId:opId, categoriaId: catId!=null?catId:null,
+        credorManualId: isCredor ? parseInt(x.rowId.replace("credor_",""),10) : null, mes:x.mes+1, ano:x.ano, valor:x.v})})
+        .then(()=>{ if(p[k]===x) delete p[k]; if(!Object.keys(p).length && this.state.dreAviso) this.setState({dreAviso:""}); })
+        .catch(err=>{ x.enviando = false; this.setState({dreAviso: "Há valores do DRE que ainda não foram salvos no servidor" + (err && err.message ? " (" + err.message + ")" : "") + ". Eles continuam na tela e o sistema tenta de novo a cada poucos segundos. Não feche a página."}); });
+    });
   }
   flushCommits(){
     if(!this._commitTimers) return;
@@ -3523,16 +3552,21 @@ class Component extends DCLogic {
   commitValue(unitIdx, rowId){
     if(!API_BASE_URL) return;
     const unit = this.state.units[unitIdx];
-    const v = getVal(unit, rowId, this.state.year, this.state.month);
+    const ano = this.state.year, mes = this.state.month;
+    const v = getVal(unit, rowId, ano, mes);
     const opId = this.state.opIdByName[unit.name];
     const catId = this.state.catIdByCode[rowId];
     const isCredor = rowId.indexOf("credor_")===0 && /^\d+$/.test(rowId.replace("credor_",""));
+    const pk = unit.name+"|"+rowId+"|"+ano+"-"+mes;
+    this._pendDre = this._pendDre || {};
+    const pend = this._pendDre[pk] = {nome:unit.name, rowId, ano, mes, v, desde:Date.now(), enviando:true};
     if(opId && (catId!=null || isCredor)){
       apiFetch("/api/lancamentos", {method:"PUT", body:JSON.stringify({
         operacaoId:opId, categoriaId: catId!=null?catId:null,
         credorManualId: isCredor ? parseInt(rowId.replace("credor_",""),10) : null,
-        mes:this.state.month+1, ano:this.state.year, valor:v,
-      })}).then(()=>this.loadFromApi()).catch(()=>{});
+        mes:mes+1, ano, valor:v,
+      })}).then(()=>{ if(this._pendDre[pk]===pend) delete this._pendDre[pk]; if(!Object.keys(this._pendDre).length && this.state.dreAviso) this.setState({dreAviso:""}); this.loadFromApi(); })
+        .catch(err=>{ pend.enviando = false; this.setState({dreAviso: "O valor de " + (DETAIL_ROWS.find(d=>d.id===rowId)||{label:rowId}).label + " (" + unit.name + ", " + MESES[mes] + "/" + ano + ") não foi salvo no servidor" + (err && err.message ? " (" + err.message + ")" : "") + ". Ele continua na tela e o sistema tenta de novo a cada poucos segundos. Não feche a página."}); });
     } else if(opId && catId==null && !isCredor){
       // linha sem categoria no banco: mantém o valor local e avisa no console
       console.warn("Categoria ausente no banco, valor mantido apenas localmente:", rowId);
@@ -5234,7 +5268,7 @@ class Component extends DCLogic {
   }
   renderVals(){
     if((this.state.units[this.state.opIndex]||{}).ativo===false && !this._guardOp){ this._guardOp = true; setTimeout(()=>{ this._guardOp = false; this.garantirOpAtiva(); }, 0); }
-    const d = this.renderValsDre(); return {...d, ...this.portalVals(d), ...this.comVals(), ...this.impVals(), ...this.confVals(), ...this.fdVals(), ...this.fcVals(), ...this.cpVals(), ...this.previaVals(), versaoTexto: "v" + VERSAO_SISTEMA + " · " + VERSAO_DATA.split("-").reverse().join("/"), versaoCurta: "v" + VERSAO_SISTEMA, showFinTopo: !["conferencia","fatdiario","fluxocaixa"].includes(this.viewEfetiva())}; }
+    const d = this.renderValsDre(); return {...d, ...this.portalVals(d), ...this.comVals(), ...this.impVals(), ...this.confVals(), ...this.fdVals(), ...this.fcVals(), ...this.cpVals(), ...this.previaVals(), versaoTexto: "v" + VERSAO_SISTEMA + " · " + VERSAO_DATA.split("-").reverse().join("/"), versaoCurta: "v" + VERSAO_SISTEMA, dreAviso: this.state.dreAviso || "", showFinTopo: !["conferencia","fatdiario","fluxocaixa"].includes(this.viewEfetiva())}; }
   // ---------- Financeiro: faturamento diário ----------
   fdEmpresa(){ return FD_EMPRESAS.find(e=>e.id===this.state.fdEmp) || FD_EMPRESAS[0]; }
   fdLocal(){ try{ return JSON.parse(localStorage.getItem(LS_FD)||"{}") || {}; }catch(e){ return {}; } }
@@ -5263,7 +5297,7 @@ class Component extends DCLogic {
   }
   // Arranjos Express: o faturamento do mês (soma dos dias) de cada loja vai para "Faturamento Venda de Arranjos"
   // no DRE da operação, na mesma competência. Atualiza a cada lançamento; ao fechar o mês o DRE já tem o total.
-  fdArranjosDre(comp, dados){
+  fdArranjosDre(comp, dados, soVazio){
     this._fdDreT = this._fdDreT || {}; clearTimeout(this._fdDreT[comp]);
     this._fdDreT[comp] = setTimeout(()=>{
       const ano = +comp.slice(0,4), mes = +comp.slice(5,7)-1;
@@ -5273,8 +5307,12 @@ class Component extends DCLogic {
       const partes = [];
       Object.values(FD_ARRANJOS_OPERACAO).forEach(nome=>{
         const u = this.state.units.find(x=>x.name===nome); if(!u || u.ativo===false) return;
-        const v = Math.round((somas[nome]||0)*100)/100;
-        if(Math.round(getVal(u, "fat_arranjos", ano, mes)*100)/100===v) return;
+        // Loja sem nenhum valor no faturamento diário do mês: o DRE dela não é mexido (antes ia para zero).
+        if(!(somas[nome] > 0)) return;
+        const v = Math.round(somas[nome]*100)/100, atual = Math.round(getVal(u, "fat_arranjos", ano, mes)*100)/100;
+        if(atual===v) return;
+        // Só abrindo a tela (sem lançar nada): preenche o DRE vazio, nunca troca um valor que já está lá.
+        if(soVazio && atual) return;
         this.dreDefinir(nome, "fat_arranjos", ano, mes, v);
         partes.push(nome.replace("Loja Arranjos Express ","") + " " + formatMoeda(v));
       });
@@ -5288,10 +5326,9 @@ class Component extends DCLogic {
     this.setState(st=>{ const units = [...st.units]; const u = {...units[idx]}; const values = {...u.values};
       values[rowId] = {...values[rowId], [key]:valor}; u.values = values; units[idx] = u; this.persistData(units); return {units}; });
     if(!API_BASE_URL) return;
-    const opId = this.state.opIdByName && this.state.opIdByName[nomeOp], catId = this.state.catIdByCode && this.state.catIdByCode[rowId];
-    if(!opId || catId==null) return;
-    apiFetch("/api/lancamentos", {method:"PUT", body:JSON.stringify({operacaoId:opId, categoriaId:catId, credorManualId:null, mes:mes+1, ano, valor})})
-      .catch(()=>this.setState({fdErro:"O DRE de " + nomeOp + " não foi atualizado no servidor (sem permissão de editar Por operação?)."}));
+    this._pendDre = this._pendDre || {};
+    this._pendDre[nomeOp+"|"+rowId+"|"+ano+"-"+mes] = {nome:nomeOp, rowId, ano, mes, v:valor, desde:Date.now()};
+    this.reenviarPendentes();
   }
   fdImportar(e){
     const f = e.target.files && e.target.files[0]; e.target.value = "";
@@ -5353,7 +5390,7 @@ class Component extends DCLogic {
     if(s.fdDados[k]===undefined) this.fdCarregar(emp.id, comp);
     const dados = s.fdDados[k] || null, dias = (dados && dados.dias) || {};
     // Meses de Arranjos já lançados antes: ao abrir, o DRE recebe o total (uma vez por sessão).
-    if(emp.id==="arranjos" && dados && dados.dias && !(this._fdDreSync||{})[comp]){ this._fdDreSync = {...(this._fdDreSync||{}), [comp]:true}; setTimeout(()=>this.fdArranjosDre(comp, dados), 0); }
+    if(emp.id==="arranjos" && dados && dados.dias && !(this._fdDreSync||{})[comp]){ this._fdDreSync = {...(this._fdDreSync||{}), [comp]:true}; setTimeout(()=>this.fdArranjosDre(comp, dados, true), 0); }
     const [y, m] = comp.split("-").map(Number), nd = new Date(y, m, 0).getDate();
     const setores = ((dados && dados.setores && dados.setores.length) ? dados.setores : emp.setores).slice();
     Object.values(dias).forEach(d=>Object.keys(d).forEach(n=>{ if(!setores.includes(n)) setores.push(n); }));
@@ -5436,7 +5473,7 @@ class Component extends DCLogic {
       fdGrafSub: emp.temDU ? "Total produtos consolidado por dia · passe o mouse para ver o valor" : "Faturamento consolidado das lojas por dia · passe o mouse para ver o valor",
       fdGerarImagem:()=>this.fdImagem("baixar"), fdCopiarImagem:()=>this.fdImagem("copiar"),
       fdEmpresas: FD_EMPRESAS.map(e=>{ const on = e.id===emp.id; return {label:e.label, bg:on?"#fff":"transparent", fg:on?"#1D4ED8":"#475569", sombra:on?"0 1px 2px rgba(16,24,40,.08)":"none",
-        onClick:()=>this.setState(comModoLocal() ? {fdEmp:e.id, fdComp:FD_DEMO_COMP[e.id], fdDraft:{}, fdMsg:"", fdErro:""} : {fdEmp:e.id, fdDraft:{}, fdMsg:"", fdErro:""})}; }),
+        onClick:()=>this.setState(MODO_PREVIA ? {fdEmp:e.id, fdComp:FD_DEMO_COMP[e.id], fdDraft:{}, fdMsg:"", fdErro:""} : {fdEmp:e.id, fdDraft:{}, fdMsg:"", fdErro:""})}; }),
       fdTitulo: "Faturamento diário · "+emp.label, fdDica: emp.dica,
       fdComp: comp, fdOnComp:(e)=>{ const v = e.target.value; if(/^\d{4}-\d{2}$/.test(v)) this.setState({fdComp:v, fdDraft:{}, fdMsg:""}); },
       fdApur: String(apur), fdOnApur:(e)=>{ const v = e.target.value, d2 = base(); d2.corte = v==="" ? undefined : Math.max(0, Math.min(nd, parseInt(v,10)||0)); this.fdSalvar(emp.id, comp, d2); },
